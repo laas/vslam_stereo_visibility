@@ -1,0 +1,9 @@
+<stack>
+  <description brief="vslam_stereo_visibility">vslam_stereo_visibility</description>
+  <author>Maintained by Thomas Moulard</author>
+  <license>BSD</license>  
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/vslam_stereo_visibility</url>
+  <depend stack="ros" />
+
+</stack>

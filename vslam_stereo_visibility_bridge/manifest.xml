@@ -1,0 +1,14 @@
+<package>
+  <description brief="vslam_stereo_visibility_bridge">
+
+     vslam_stereo_visibility_bridge
+
+  </description>
+  <author>Thomas Moulard</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/vslam_stereo_visibility_bridge</url>
+
+</package>
+
+
