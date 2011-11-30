@@ -1,7 +1,7 @@
 <package>
-  <description brief="vslam_stereo_visibility_bridge">
+  <description brief="VSLAM Stereo Visibility Bridge">
 
-     vslam_stereo_visibility_bridge
+    VSLAM Stereo Visibility Bridge
 
   </description>
   <author>Thomas Moulard</author>
@@ -9,6 +9,23 @@
   <review status="unreviewed" notes=""/>
   <url>http://ros.org/wiki/vslam_stereo_visibility_bridge</url>
 
+  <rosdep name="stereo_visibility" /> <!-- closed source -->
+
+  <rosdep name="boost" />
+  <rosdep name="opencv2.3" />
+
+  <depend package="std_msgs"/>
+  <depend package="roscpp"/>
+  <depend package="sensor_msgs"/>
+  <depend package="message_filters"/>
+  <depend package="geometry_msgs"/>
+
+  <!-- <depend package="rospy"/> -->
+  <!-- <depend package="image_proc"/> -->
+  <!-- <depend package="image_transport"/> -->
+
+  <!-- <depend package="dynamic_reconfigure"/> -->
+  <!-- <depend package="tf"/> -->
+  <!-- <depend package="bullet"/> -->
+
 </package>
-
-

@@ -1,9 +1,16 @@
 <stack>
-  <description brief="vslam_stereo_visibility">vslam_stereo_visibility</description>
+  <description brief="VSLAM Stereo Visibility">
+
+    VSLAM Stereo Visibility stack
+
+    Wraps the closed source Visual SLAM algorithm by Pablo Fernandez.
+
+  </description>
   <author>Maintained by Thomas Moulard</author>
-  <license>BSD</license>  
-  <review status="unreviewed" notes=""/>
+  <license>BSD</license>
+  <review status="experimental" notes=""/>
   <url>http://ros.org/wiki/vslam_stereo_visibility</url>
+
   <depend stack="ros" />
 
 </stack>
