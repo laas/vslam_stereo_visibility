@@ -13,6 +13,7 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 #rosbuild_gensrv()
 
 #FIXME: detect properly package.
+ADD_DEFINITIONS(-D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE)
 INCLUDE_DIRECTORIES(
   /home/thomas/Downloads/rss12_stereo_visibility/
   /home/thomas/profiles/laas/install/stable/include/

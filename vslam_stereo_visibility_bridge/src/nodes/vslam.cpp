@@ -3,7 +3,8 @@
 #include <boost/bind.hpp>
 
 #include <ros/ros.h>
-
+#include <image_transport/image_transport.h>
+#include <image_transport/subscriber_filter.h>
 #include <geometry_msgs/TransformStamped.h>
 #include <message_filters/subscriber.h>
 #include <message_filters/synchronizer.h>
@@ -27,6 +28,8 @@ public:
   void waitForImage();
   void spin ();
 
+  bool imageInitialized ();
+
 protected:
   void imageCallback (const sensor_msgs::ImageConstPtr& leftImage,
 		      const sensor_msgs::CameraInfoConstPtr& leftCamera,
@@ -37,11 +40,13 @@ private:
   /// \brief Main node handle.
   ros::NodeHandle nodeHandle_;
 
+  image_transport::ImageTransport imageTransport_;
+
   VisionLocalization localization_;
 
-  message_filters::Subscriber<sensor_msgs::Image> leftImageSub_;
+  image_transport::SubscriberFilter leftImageSub_;
   message_filters::Subscriber<sensor_msgs::CameraInfo> leftCameraSub_;
-  message_filters::Subscriber<sensor_msgs::Image> rightImageSub_;
+  image_transport::SubscriberFilter rightImageSub_;
   message_filters::Subscriber<sensor_msgs::CameraInfo> rightCameraSub_;
 
   message_filters::Synchronizer<policy_t> sync_;
@@ -56,6 +61,7 @@ private:
 
 SlamNode::SlamNode ()
   : nodeHandle_ ("slam_node"),
+    imageTransport_ (nodeHandle_),
     localization_ (),
     leftImageSub_ (),
     leftCameraSub_ (),
@@ -74,9 +80,9 @@ SlamNode::SlamNode ()
   ros::param::param<std::string>("~camera_prefix", cameraTopicPrefix, "");
 
   // Topic name construction.
-  std::string leftImageTopic = cameraTopicPrefix + "/left/image_raw";
+  std::string leftImageTopic = cameraTopicPrefix + "/left/image_mono";
   std::string leftCameraTopic = cameraTopicPrefix + "/left/camera_info";
-  std::string rightImageTopic = cameraTopicPrefix + "/right/image_raw";
+  std::string rightImageTopic = cameraTopicPrefix + "/right/image_mono";
   std::string rightCameraTopic = cameraTopicPrefix + "/right/camera_info";
 
   // Publishers creation.
@@ -85,9 +91,9 @@ SlamNode::SlamNode ()
     ("camera_position", 1);
 
   // Subscribers creation.
-  leftImageSub_.subscribe (nodeHandle_, leftImageTopic, 1);
+  leftImageSub_.subscribe (imageTransport_, leftImageTopic, 1);
   leftCameraSub_.subscribe (nodeHandle_, leftCameraTopic, 1);
-  rightImageSub_.subscribe (nodeHandle_, rightImageTopic, 1);
+  rightImageSub_.subscribe (imageTransport_, rightImageTopic, 1);
   rightCameraSub_.subscribe (nodeHandle_, rightCameraTopic, 1);
 
   // Message filter creation.
@@ -96,13 +102,12 @@ SlamNode::SlamNode ()
 
   sync_.registerCallback
     (boost::bind
-     (&SlamNode::imageCallback, boost::ref (this), _1, _2, _3, _4));
+     (&SlamNode::imageCallback, this, _1, _2, _3, _4));
 
   waitForImage ();
   if (!ros::ok())
     return;
-  if (!leftImage_.width || !leftImage_.height
-      || !rightImage_.width || !rightImage_.height)
+  if (!imageInitialized ())
     throw std::runtime_error ("failed to retrieve image");
 }
 
@@ -113,14 +118,12 @@ void
 SlamNode::waitForImage ()
 {
   ros::Rate loop_rate (10);
-  while (ros::ok ()
-	 && (!leftImage_.width
-	     || !leftImage_.height
-	     || !rightImage_.width
-	     || !rightImage_.height))
+  while (ros::ok () && !imageInitialized ())
     {
-      ros::spinOnce();
-      loop_rate.sleep();
+      ROS_INFO_THROTTLE
+	(5, "waiting for synchronized image and camera data...");
+      ros::spinOnce ();
+      loop_rate.sleep ();
     }
 }
 
@@ -132,40 +135,53 @@ SlamNode::spin ()
   geometry_msgs::TransformStamped cameraTransformation;
   cameraTransformation.header.seq = 0;
   cameraTransformation.header.stamp = ros::Time::now ();
+
+  // The world frame is the first position of the left camera when the
+  // system starts.
   cameraTransformation.header.frame_id = "/slam_world";
 
-  cameraTransformation.child_frame_id = "/camera"; //FIXME: which one?
+  // The camera position returned by the localization system is the
+  // *LEFT* camera position.
+  cameraTransformation.child_frame_id = leftCamera_.header.frame_id;
 
+  unsigned lastSeq = leftCamera_.header.seq - 1;
+
+  ROS_INFO("starting");
   while (ros::ok ())
     {
-      // Update header.
-      ++cameraTransformation.header.seq;
-      cameraTransformation.header.stamp = leftImage_.header.stamp;
+      // Make sure each image is processed once.
+      if (leftCamera_.header.seq > lastSeq)
+	{
+	  lastSeq = leftCamera_.header.seq;
 
-      // Localize the camera.
-      localization_.Localization_Step
-	(&leftImage_.data[0], &rightImage_.data[0], 1);
+	  // Update header.
+	  ++cameraTransformation.header.seq;
+	  cameraTransformation.header.stamp = leftCamera_.header.stamp;
 
-      // Copy the new camera position.
-      cameraTransformation.transform.translation.x =
-	localization_.Get_X_Pose ();
-      cameraTransformation.transform.translation.y =
-	localization_.Get_Y_Pose ();
-      cameraTransformation.transform.translation.z =
-	localization_.Get_Z_Pose ();
+	  // Localize the camera.
+	  localization_.Localization_Step
+	    (&leftImage_.data[0], &rightImage_.data[0], 1);
 
-      cameraTransformation.transform.rotation.x =
-	localization_.Get_qX_Pose ();
-      cameraTransformation.transform.rotation.y =
-	localization_.Get_qY_Pose ();
-      cameraTransformation.transform.rotation.z =
-	localization_.Get_qZ_Pose ();
-      cameraTransformation.transform.rotation.w =
-	localization_.Get_q0_Pose ();
+	  // Copy the new camera position, convert to SI.
+	  cameraTransformation.transform.translation.x =
+	    localization_.Get_X_Pose () / 1000.;
+	  cameraTransformation.transform.translation.y =
+	    localization_.Get_Y_Pose () / 1000.;
+	  cameraTransformation.transform.translation.z =
+	    localization_.Get_Z_Pose () / 1000.;
 
-      // Publish the new camera position.
-      cameraTransformationPub_.publish (cameraTransformation);
+	  cameraTransformation.transform.rotation.x =
+	    localization_.Get_qX_Pose ();
+	  cameraTransformation.transform.rotation.y =
+	    localization_.Get_qY_Pose ();
+	  cameraTransformation.transform.rotation.z =
+	    localization_.Get_qZ_Pose ();
+	  cameraTransformation.transform.rotation.w =
+	    localization_.Get_q0_Pose ();
 
+	  // Publish the new camera position.
+	  cameraTransformationPub_.publish (cameraTransformation);
+	}
       rate.sleep ();
       ros::spinOnce ();
     }
@@ -177,6 +193,12 @@ SlamNode::imageCallback (const sensor_msgs::ImageConstPtr& leftImage,
 			 const sensor_msgs::ImageConstPtr& rightImage,
 			 const sensor_msgs::CameraInfoConstPtr& rightCamera)
 {
+  if (!leftImage || !leftCamera || !rightImage || !rightCamera)
+    {
+      ROS_WARN_THROTTLE (1, "null pointer in image callback");
+      return;
+    }
+
   if (leftImage->encoding != sensor_msgs::image_encodings::MONO8
       || rightImage->encoding != sensor_msgs::image_encodings::MONO8)
     {
@@ -189,6 +211,16 @@ SlamNode::imageCallback (const sensor_msgs::ImageConstPtr& leftImage,
   leftCamera_ = *leftCamera;
   rightImage_ = *rightImage;
   rightCamera_ = *rightCamera;
+
+  ROS_INFO_THROTTLE
+    (5, "image callback called");
+}
+
+bool
+SlamNode::imageInitialized ()
+{
+  return leftImage_.width > 0 && leftImage_.height > 0
+    && rightImage_.width > 0 && rightImage_.height > 0;
 }
 
 
