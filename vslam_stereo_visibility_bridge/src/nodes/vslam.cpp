@@ -10,6 +10,7 @@
 #include <message_filters/sync_policies/approximate_time.h>
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/CameraInfo.h>
+#include <sensor_msgs/image_encodings.h>
 
 #include <VisionLocalization.h>
 
@@ -133,13 +134,13 @@ SlamNode::spin ()
   cameraTransformation.header.stamp = ros::Time::now ();
   cameraTransformation.header.frame_id = "/slam_world";
 
-  cameraTransformation.child_frame_id = "/camera"; //FIXME:
+  cameraTransformation.child_frame_id = "/camera"; //FIXME: which one?
 
   while (ros::ok ())
     {
       // Update header.
       ++cameraTransformation.header.seq;
-      cameraTransformation.header.stamp = ros::Time::now (); //FIXME:
+      cameraTransformation.header.stamp = leftImage_.header.stamp;
 
       // Localize the camera.
       localization_.Localization_Step
@@ -176,6 +177,14 @@ SlamNode::imageCallback (const sensor_msgs::ImageConstPtr& leftImage,
 			 const sensor_msgs::ImageConstPtr& rightImage,
 			 const sensor_msgs::CameraInfoConstPtr& rightCamera)
 {
+  if (leftImage->encoding != sensor_msgs::image_encodings::MONO8
+      || rightImage->encoding != sensor_msgs::image_encodings::MONO8)
+    {
+      ROS_WARN_THROTTLE
+	(1, "invalid image encoding, should be mono8. Ignoring received images...");
+      return;
+    }
+
   leftImage_ = *leftImage;
   leftCamera_ = *leftCamera;
   rightImage_ = *rightImage;
