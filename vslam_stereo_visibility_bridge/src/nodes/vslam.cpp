@@ -162,25 +162,30 @@ SlamNode::spin ()
 	  localization_.Localization_Step
 	    (&leftImage_.data[0], &rightImage_.data[0], 1);
 
-	  // Copy the new camera position, convert to SI.
-	  cameraTransformation.transform.translation.x =
-	    localization_.Get_X_Pose () / 1000.;
-	  cameraTransformation.transform.translation.y =
-	    localization_.Get_Y_Pose () / 1000.;
-	  cameraTransformation.transform.translation.z =
-	    localization_.Get_Z_Pose () / 1000.;
+	  if (localization_.Get_Rejected_Pose () == false)
+	    {
+	      // Copy the new camera position, convert to SI.
+	      cameraTransformation.transform.translation.x =
+		localization_.Get_X_Pose () / 1000.;
+	      cameraTransformation.transform.translation.y =
+		localization_.Get_Y_Pose () / 1000.;
+	      cameraTransformation.transform.translation.z =
+		localization_.Get_Z_Pose () / 1000.;
 
-	  cameraTransformation.transform.rotation.x =
-	    localization_.Get_qX_Pose ();
-	  cameraTransformation.transform.rotation.y =
-	    localization_.Get_qY_Pose ();
-	  cameraTransformation.transform.rotation.z =
-	    localization_.Get_qZ_Pose ();
-	  cameraTransformation.transform.rotation.w =
-	    localization_.Get_q0_Pose ();
+	      cameraTransformation.transform.rotation.x =
+		localization_.Get_qX_Pose ();
+	      cameraTransformation.transform.rotation.y =
+		localization_.Get_qY_Pose ();
+	      cameraTransformation.transform.rotation.z =
+		localization_.Get_qZ_Pose ();
+	      cameraTransformation.transform.rotation.w =
+		localization_.Get_q0_Pose ();
 
-	  // Publish the new camera position.
-	  cameraTransformationPub_.publish (cameraTransformation);
+	      // Publish the new camera position.
+	      cameraTransformationPub_.publish (cameraTransformation);
+	    }
+	  else
+	    ROS_WARN_THROTTLE(1., "rejected pose");
 	}
       rate.sleep ();
       ros::spinOnce ();
