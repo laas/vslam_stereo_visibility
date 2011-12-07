@@ -21,12 +21,6 @@
   <depend package="geometry_msgs"/>
   <depend package="image_transport"/>
 
-  <!-- <depend package="rospy"/> -->
-  <!-- <depend package="image_proc"/> -->
-  <!-- <depend package="image_transport"/> -->
-
-  <!-- <depend package="dynamic_reconfigure"/> -->
-  <!-- <depend package="tf"/> -->
-  <!-- <depend package="bullet"/> -->
+  <depend package="tf"/>
 
 </package>

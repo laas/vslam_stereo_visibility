@@ -12,6 +12,8 @@
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/CameraInfo.h>
 #include <sensor_msgs/image_encodings.h>
+#include <tf/transform_broadcaster.h>
+#include <tf/transform_listener.h>
 
 #include <VisionLocalization.h>
 
@@ -57,6 +59,11 @@ private:
   sensor_msgs::CameraInfo leftCamera_;
   sensor_msgs::Image rightImage_;
   sensor_msgs::CameraInfo rightCamera_;
+
+  std::string mapFrameId_;
+  std::string baseLinkFrameId_;
+  tf::TransformListener tfListener_;
+  tf::TransformBroadcaster tfBroadcaster_;
 };
 
 SlamNode::SlamNode ()
@@ -73,11 +80,20 @@ SlamNode::SlamNode ()
     leftImage_ (),
     leftCamera_ (),
     rightImage_ (),
-    rightCamera_ ()
+    rightCamera_ (),
+
+    mapFrameId_ (),
+    baseLinkFrameId_ (),
+    tfListener_ (),
+    tfBroadcaster_ ()
 {
   // Parameters definition.
   std::string cameraTopicPrefix;
   ros::param::param<std::string>("~camera_prefix", cameraTopicPrefix, "");
+
+  ros::param::param<std::string>("~map_frame_id", mapFrameId_, "/map");
+  ros::param::param<std::string>("~base_link_frame_id", baseLinkFrameId_,
+				 "/base_link");
 
   // Topic name construction.
   std::string leftImageTopic = cameraTopicPrefix + "/left/image_mono";
@@ -146,6 +162,15 @@ SlamNode::spin ()
 
   unsigned lastSeq = leftCamera_.header.seq - 1;
 
+  // camera position w.r.t. slam world
+  // We make here the assumption that the slam world is "map".
+  tf::StampedTransform mapMc;
+
+  // base link position w.r.t camera
+  tf::StampedTransform cMbl;
+  // base link position w.r.t. map frame
+  tf::StampedTransform mapMbl;
+
   ROS_INFO("starting");
   while (ros::ok ())
     {
@@ -183,6 +208,32 @@ SlamNode::spin ()
 
 	      // Publish the new camera position.
 	      cameraTransformationPub_.publish (cameraTransformation);
+
+	      // Publish to tf.
+	      try
+		{
+		  transformStampedMsgToTF
+		    (cameraTransformation, mapMc);
+		  tfListener_.lookupTransform
+		    (baseLinkFrameId_,
+		     cameraTransformation.child_frame_id,
+		     ros::Time (0), cMbl);
+
+		  // Compute base link position w.r.t. to map frame to
+		  // localize the robot.
+		  mapMbl.mult(mapMc, cMbl);
+
+		  tfBroadcaster_.sendTransform
+		    (tf::StampedTransform
+		     (mapMbl, cameraTransformation.header.stamp,
+		      baseLinkFrameId_, mapFrameId_));
+		}
+	      catch (tf::TransformException ex)
+		{
+		  ROS_DEBUG_THROTTLE (1,
+				      "failed to retrieve base link"
+				      " position w.r.t. camera frame.");
+		}
 	    }
 	  else
 	    ROS_WARN_THROTTLE(1., "rejected pose");
