@@ -93,7 +93,7 @@ SlamNode::SlamNode ()
 
   ros::param::param<std::string>("~map_frame_id", mapFrameId_, "/map");
   ros::param::param<std::string>("~base_link_frame_id", baseLinkFrameId_,
-				 "/base_link");
+				 "/left_ankle"); //FIXME:
 
   // Topic name construction.
   std::string leftImageTopic = cameraTopicPrefix + "/left/image_mono";
@@ -171,6 +171,13 @@ SlamNode::spin ()
   // base link position w.r.t. map frame
   tf::StampedTransform mapMbl;
 
+
+  tf::StampedTransform c0Mc;
+  tf::StampedTransform mapMc0
+    (tf::Transform (btQuaternion (-0.543, 0.553, -0.455, 0.439),
+		    btVector3 (0.106, 0.074, 1.347)),
+     ros::Time::now (), "", "");
+
   ROS_INFO("starting");
   while (ros::ok ())
     {
@@ -187,7 +194,8 @@ SlamNode::spin ()
 	  localization_.Localization_Step
 	    (&leftImage_.data[0], &rightImage_.data[0], 1);
 
-	  if (localization_.Get_Rejected_Pose () == false)
+	  if(true)
+	    //if (localization_.Get_Rejected_Pose () == false)
 	    {
 	      // Copy the new camera position, convert to SI.
 	      cameraTransformation.transform.translation.x =
@@ -198,13 +206,13 @@ SlamNode::spin ()
 		localization_.Get_Z_Pose () / 1000.;
 
 	      cameraTransformation.transform.rotation.x =
-		localization_.Get_qX_Pose ();
-	      cameraTransformation.transform.rotation.y =
-		localization_.Get_qY_Pose ();
-	      cameraTransformation.transform.rotation.z =
-		localization_.Get_qZ_Pose ();
-	      cameraTransformation.transform.rotation.w =
 		localization_.Get_q0_Pose ();
+	      cameraTransformation.transform.rotation.y =
+		localization_.Get_qX_Pose ();
+	      cameraTransformation.transform.rotation.z =
+		localization_.Get_qY_Pose ();
+	      cameraTransformation.transform.rotation.w =
+		localization_.Get_qZ_Pose ();
 
 	      // Publish the new camera position.
 	      cameraTransformationPub_.publish (cameraTransformation);
@@ -213,20 +221,21 @@ SlamNode::spin ()
 	      try
 		{
 		  transformStampedMsgToTF
-		    (cameraTransformation, mapMc);
-		  tfListener_.lookupTransform
-		    (baseLinkFrameId_,
-		     cameraTransformation.child_frame_id,
-		     ros::Time (0), cMbl);
+		    (cameraTransformation, c0Mc);
+		  // tfListener_.lookupTransform
+		  //   (cameraTransformation.child_frame_id,
+		  //    baseLinkFrameId_,
+		  //    leftCamera_.header.stamp, cMbl);
 
 		  // Compute base link position w.r.t. to map frame to
 		  // localize the robot.
-		  mapMbl.mult(mapMc, cMbl);
+		  mapMc.mult(mapMc0, c0Mc);
+		  //mapMbl.mult(mapMc, cMbl);
 
 		  tfBroadcaster_.sendTransform
 		    (tf::StampedTransform
-		     (mapMbl, cameraTransformation.header.stamp,
-		      baseLinkFrameId_, mapFrameId_));
+		     (mapMc.inverse(), cameraTransformation.header.stamp,
+		      cameraTransformation.child_frame_id, mapFrameId_));
 		}
 	      catch (tf::TransformException ex)
 		{
