@@ -15,45 +15,44 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 #FIXME: detect properly package.
 ADD_DEFINITIONS(-D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE)
 INCLUDE_DIRECTORIES(
-  /home/thomas/Downloads/rss12_stereo_visibility/
+  src/rss12_stereo_visibility/
   /home/thomas/profiles/laas/install/stable/include/
   /home/thomas/profiles/laas/install/stable/include/TooN
   /home/thomas/Downloads/levmar-2.5
   )
 LINK_DIRECTORIES(
-  /home/thomas/Downloads/rss12_stereo_visibility/
+  src/rss12_stereo_visibility/
   /home/thomas/profiles/laas/install/stable/lib
   /home/thomas/Downloads/levmar-2.5
   )
 SET(SRCS
-  /home/thomas/Downloads/rss12_stereo_visibility/CameraPose.cpp
-  /home/thomas/Downloads/rss12_stereo_visibility/SceneSingle.cpp
-  /home/thomas/Downloads/rss12_stereo_visibility/Feature.cpp
-  /home/thomas/Downloads/rss12_stereo_visibility/StereoPoint.cpp
-  /home/thomas/Downloads/rss12_stereo_visibility/StereoRig.cpp
-  /home/thomas/Downloads/rss12_stereo_visibility/Pose.cpp
-  /home/thomas/Downloads/rss12_stereo_visibility/Pose_VO.cpp
-  /home/thomas/Downloads/rss12_stereo_visibility/Ransac_PnP.cpp
-  /home/thomas/Downloads/rss12_stereo_visibility/ThreePt_PnP.cpp
-  /home/thomas/Downloads/rss12_stereo_visibility/Ransac_VO.cpp
-  /home/thomas/Downloads/rss12_stereo_visibility/ThreePt_VO.cpp
-  /home/thomas/Downloads/rss12_stereo_visibility/Putative.cpp
-  /home/thomas/Downloads/rss12_stereo_visibility/CDHarris.cpp
-  /home/thomas/Downloads/rss12_stereo_visibility/CDFast.cpp
-  /home/thomas/Downloads/rss12_stereo_visibility/fast_9.cpp
-  /home/thomas/Downloads/rss12_stereo_visibility/fast_10.cpp
-  /home/thomas/Downloads/rss12_stereo_visibility/fast_11.cpp
-  /home/thomas/Downloads/rss12_stereo_visibility/fast_12.cpp
-  /home/thomas/Downloads/rss12_stereo_visibility/nonmax.cpp
-  /home/thomas/Downloads/rss12_stereo_visibility/VisionLocalization.cpp
-  /home/thomas/Downloads/rss12_stereo_visibility/VisibilityClassifier.cpp
-  /home/thomas/Downloads/rss12_stereo_visibility/fasthessian.cpp
-  /home/thomas/Downloads/rss12_stereo_visibility/integral.cpp
-  /home/thomas/Downloads/rss12_stereo_visibility/surf.cpp
-  /home/thomas/Downloads/rss12_stereo_visibility/ipoint.cpp
-  /home/thomas/Downloads/rss12_stereo_visibility/utils.cpp
-  /home/thomas/Downloads/rss12_stereo_visibility/opencvviewer.cpp
-  /home/thomas/Downloads/rss12_stereo_visibility/openglviewer.cpp
+  src/rss12_stereo_visibility/CameraPose.cpp
+  src/rss12_stereo_visibility/SceneSingle.cpp
+  src/rss12_stereo_visibility/Feature.cpp
+  src/rss12_stereo_visibility/StereoPoint.cpp
+  src/rss12_stereo_visibility/StereoRig.cpp
+  src/rss12_stereo_visibility/Pose.cpp
+  src/rss12_stereo_visibility/Pose_VO.cpp
+  src/rss12_stereo_visibility/Ransac_PnP.cpp
+  src/rss12_stereo_visibility/ThreePt_PnP.cpp
+  src/rss12_stereo_visibility/Ransac_VO.cpp
+  src/rss12_stereo_visibility/ThreePt_VO.cpp
+  src/rss12_stereo_visibility/Putative.cpp
+  src/rss12_stereo_visibility/CDHarris.cpp
+  src/rss12_stereo_visibility/CDFast.cpp
+  src/rss12_stereo_visibility/fast_9.cpp
+  src/rss12_stereo_visibility/fast_10.cpp
+  src/rss12_stereo_visibility/fast_11.cpp
+  src/rss12_stereo_visibility/fast_12.cpp
+  src/rss12_stereo_visibility/nonmax.cpp
+  src/rss12_stereo_visibility/VisionLocalization.cpp
+  src/rss12_stereo_visibility/VisibilityClassifier.cpp
+  src/rss12_stereo_visibility/fasthessian.cpp
+  src/rss12_stereo_visibility/integral.cpp
+  src/rss12_stereo_visibility/surf.cpp
+  src/rss12_stereo_visibility/ipoint.cpp
+  src/rss12_stereo_visibility/utils.cpp
+  src/rss12_stereo_visibility/opencvviewer.cpp
 )
 find_package(GLUT)
 find_package(OpenGL)

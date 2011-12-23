@@ -194,8 +194,8 @@ SlamNode::spin ()
 	  localization_.Localization_Step
 	    (&leftImage_.data[0], &rightImage_.data[0], 1);
 
-	  if(true)
-	    //if (localization_.Get_Rejected_Pose () == false)
+	  //if(true)
+	  if (localization_.Get_Rejected_Pose () == false)
 	    {
 	      // Copy the new camera position, convert to SI.
 	      cameraTransformation.transform.translation.x =
