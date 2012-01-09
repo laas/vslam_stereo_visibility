@@ -1,0 +1,33 @@
+<!-- -*- xml -*-
+
+     This plays back a recorded video sequence and localize the
+     camera.
+
+  -->
+<launch>
+  <arg name="bag_file" />
+
+  <!-- Use the timestamps embedded in the ROS bag file -->
+  <param name="use_sim_time" value="true" />
+
+  <!-- Play the video sequence, publish the clock topic to preserve
+       the original timestamps. -->
+  <node pkg="rosbag" type="rosbag" name="rosbag" args="play --clock -l
+						       $(arg bag_file)"/>
+
+  <!-- Launch the tracking node -->
+  <node pkg="vslam_stereo_visibility_bridge" type="vslam"
+	name="tracker_mbt"
+	cwd="node">
+    <param name="camera_prefix" value="/wide" />
+  </node>
+
+  <!-- Image processing nodes. -->
+  <group ns="/wide/left">
+    <node pkg="image_proc" type="image_proc" name="image_proc_left" />
+  </group>
+  <group ns="/wide/right">
+    <node pkg="image_proc" type="image_proc" name="image_proc_right" />
+  </group>
+
+</launch>
