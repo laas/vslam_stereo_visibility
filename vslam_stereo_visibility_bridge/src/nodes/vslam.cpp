@@ -194,6 +194,11 @@ SlamNode::spin ()
 	  localization_.Localization_Step
 	    (&leftImage_.data[0], &rightImage_.data[0], 1);
 
+	  if(localization_.Get_Tracking_Lost ())
+	    ROS_WARN_THROTTLE(1., "tracking lost");
+	  if(localization_.Get_Rejected_Pose ())
+	    ROS_WARN_THROTTLE(1., "rejected pose");
+
 	  //if(true)
 	  if (!localization_.Get_Tracking_Lost ())
 	    {
