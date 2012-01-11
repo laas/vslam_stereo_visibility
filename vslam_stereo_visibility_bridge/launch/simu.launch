@@ -34,4 +34,20 @@
     <node pkg="image_proc" type="image_proc" name="image_proc_right" />
   </group>
 
+  <!-- command -->
+  <param name="robot_description"
+	 textfile="$(find hrp2_14_description)/urdf/hrp2.urdf" />
+  <group ns="dynamic_graph">
+    <node name="robot_state_publisher"
+	  pkg="robot_state_publisher"
+	  type="state_publisher"
+	  respawn="true"
+	  />
+
+    <node name="tf_broadcaster"
+	  pkg="dynamic_graph_bridge"
+	  type="tf_broadcaster"
+	  respawn="true"
+	  />
+  </group>
 </launch>

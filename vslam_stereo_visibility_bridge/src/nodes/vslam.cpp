@@ -237,10 +237,53 @@ SlamNode::spin ()
 		  mapMc.mult(mapMc0, c0Mc);
 		  //mapMbl.mult(mapMc, cMbl);
 
-		  tfBroadcaster_.sendTransform
-		    (tf::StampedTransform
-		     (mapMc.inverse(), cameraTransformation.header.stamp,
-		      cameraTransformation.child_frame_id, mapFrameId_));
+		  tf::StampedTransform cMmap
+		    (mapMc.inverse(), cameraTransformation.header.stamp,
+		     cameraTransformation.child_frame_id, mapFrameId_);
+
+
+		  // If possible, use command to set the roll, pitch
+		  // camera orientation and the Z component (height) of
+		  // the translation.
+		  //
+		  // The assumption is that knowing that the robot is
+		  // lying on a flat ground the roll, pitch and Z
+		  // element cannot drift from their reference
+		  // position. However, this neglects the robot
+		  // flexibility.
+		  try
+		    {
+		      tf::StampedTransform wMc;
+		      tfListener_.lookupTransform
+			(cameraTransformation.child_frame_id,
+			 "/world", ros::Time(0), wMc);
+
+
+		      btMatrix3x3& R = cMmap.getBasis();
+
+		      btScalar yaw = 0.;
+		      btScalar pitch = 0.;
+		      btScalar roll = 0.;
+		      R.getEulerYPR(yaw, pitch, roll);
+
+		      btMatrix3x3 R0 = wMc.getBasis();
+		      btScalar yaw0 = 0.;
+		      btScalar pitch0 = 0.;
+		      btScalar roll0 = 0.;
+		      R0.getEulerYPR(yaw0, pitch0, roll0);
+
+
+		      R.setEulerYPR(yaw0, pitch, roll);
+		      R[2][3] = R0[2][3];
+		    }
+		  catch(tf::TransformException ex)
+		    {
+		      ROS_DEBUG_THROTTLE (1,
+					  "failed to retrieve world"
+					  " position w.r.t. camera frame.");
+		    }
+
+		  tfBroadcaster_.sendTransform(cMmap);
 		}
 	      catch (tf::TransformException ex)
 		{
