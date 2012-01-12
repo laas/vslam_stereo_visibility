@@ -173,10 +173,13 @@ SlamNode::spin ()
 
 
   tf::StampedTransform c0Mc;
+  tf::StampedTransform c0Mc_command;
   tf::StampedTransform mapMc0
     (tf::Transform (btQuaternion (-0.543, 0.553, -0.455, 0.439),
 		    btVector3 (0.106, 0.074, 1.347)),
      ros::Time::now (), "", "");
+
+  tf::StampedTransform wMc;
 
   ROS_INFO("starting");
   while (ros::ok ())
@@ -189,6 +192,44 @@ SlamNode::spin ()
 	  // Update header.
 	  ++cameraTransformation.header.seq;
 	  cameraTransformation.header.stamp = leftCamera_.header.stamp;
+
+	  // If possible, use command to set the roll, pitch
+	  // camera orientation and the Z component (height) of
+	  // the translation.
+	  //
+	  // The assumption is that knowing that the robot is
+	  // lying on a flat ground the roll, pitch and Z
+	  // element cannot drift from their reference
+	  // position. However, this neglects the robot
+	  // flexibility.
+	  try
+	    {
+	      tfListener_.lookupTransform
+		(cameraTransformation.child_frame_id,
+		 "/world", ros::Time(0), wMc);
+
+	      c0Mc_command.mult(mapMc0.inverse (), wMc);
+
+	      btMatrix3x3 R = c0Mc_command.getBasis ();
+	      double roll = 0;
+	      double pitch = 0;
+	      double yaw = 0;
+	      R.getEulerYPR (yaw, pitch, roll);
+
+	      // Update the camera pose estimation.
+	      TooN::Vector<3> pos;
+	      pos[0] = c0Mc_command.getOrigin ()[2]; // Z
+	      pos[1] = roll;
+	      pos[2] = pitch;
+	      localization_.Set_Camera_TPose(pos);
+	      //FIXME: this is in world frame!!
+	    }
+	  catch(tf::TransformException ex)
+	    {
+	      ROS_DEBUG_THROTTLE (1,
+				  "failed to retrieve world"
+				  " position w.r.t. camera frame.");
+	    }
 
 	  // Localize the camera.
 	  localization_.Localization_Step
@@ -251,37 +292,21 @@ SlamNode::spin ()
 		  // element cannot drift from their reference
 		  // position. However, this neglects the robot
 		  // flexibility.
-		  try
-		    {
-		      tf::StampedTransform wMc;
-		      tfListener_.lookupTransform
-			(cameraTransformation.child_frame_id,
-			 "/world", ros::Time(0), wMc);
+		  btMatrix3x3& R = cMmap.getBasis();
 
+		  btScalar yaw = 0.;
+		  btScalar pitch = 0.;
+		  btScalar roll = 0.;
+		  R.getEulerYPR(yaw, pitch, roll);
 
-		      btMatrix3x3& R = cMmap.getBasis();
+		  btMatrix3x3 R0 = wMc.getBasis();
+		  btScalar yaw0 = 0.;
+		  btScalar pitch0 = 0.;
+		  btScalar roll0 = 0.;
+		  R0.getEulerYPR(yaw0, pitch0, roll0);
 
-		      btScalar yaw = 0.;
-		      btScalar pitch = 0.;
-		      btScalar roll = 0.;
-		      R.getEulerYPR(yaw, pitch, roll);
-
-		      btMatrix3x3 R0 = wMc.getBasis();
-		      btScalar yaw0 = 0.;
-		      btScalar pitch0 = 0.;
-		      btScalar roll0 = 0.;
-		      R0.getEulerYPR(yaw0, pitch0, roll0);
-
-
-		      R.setEulerYPR(yaw0, pitch, roll);
-		      R[2][3] = R0[2][3];
-		    }
-		  catch(tf::TransformException ex)
-		    {
-		      ROS_DEBUG_THROTTLE (1,
-					  "failed to retrieve world"
-					  " position w.r.t. camera frame.");
-		    }
+		  //R.setEulerYPR(yaw0, pitch, roll);
+		  //R[2][3] = R0[2][3];
 
 		  tfBroadcaster_.sendTransform(cMmap);
 		}
