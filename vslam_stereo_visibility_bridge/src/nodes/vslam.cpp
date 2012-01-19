@@ -17,6 +17,38 @@
 
 #include <VisionLocalization.h>
 
+namespace debug
+{
+  std::ostream& displayPose (std::ostream& o, btTransform& t)
+  {
+    double y = 0.;
+    double p = 0.;
+    double r = 0.;
+    t.getBasis ().getEulerYPR (y, p, r);
+    o << " ";
+    o << r;
+    o << " ";
+    o << p;
+    o << " ";
+    o << y;
+    o << " ";
+    o << t.getOrigin () [0];
+    o << " ";
+    o << t.getOrigin () [1];
+    o << " ";
+    o << t.getOrigin () [2];
+    o << "\n";
+    return o;
+  }
+
+  std::string getPoseString (btTransform& t)
+  {
+    std::stringstream ss;
+    displayPose(ss, t);
+    return ss.str ();
+  }
+} // end of namespace debug.
+
 class SlamNode
 {
 public:
@@ -37,6 +69,12 @@ protected:
 		      const sensor_msgs::CameraInfoConstPtr& leftCamera,
 		      const sensor_msgs::ImageConstPtr& rightImage,
 		      const sensor_msgs::CameraInfoConstPtr& rightCamera);
+
+  void retrieveCameraPositionUsingControl ();
+  void estimateCameraPosition ();
+  void localizeCamera ();
+  void correctCameraPosition ();
+  void publishMapFrame ();
 
 private:
   /// \brief Main node handle.
@@ -64,6 +102,17 @@ private:
   std::string baseLinkFrameId_;
   tf::TransformListener tfListener_;
   tf::TransformBroadcaster tfBroadcaster_;
+
+  tf::StampedTransform wMcNow_;
+  tf::StampedTransform wMcCameraTime_;
+
+  btTransform mapMc0_;
+
+  btTransform c0Mc_;
+
+  tf::StampedTransform cMmap_;
+  tf::StampedTransform cMmapCorrected_;
+  bool firstTime_;
 };
 
 SlamNode::SlamNode ()
@@ -84,8 +133,20 @@ SlamNode::SlamNode ()
 
     mapFrameId_ (),
     baseLinkFrameId_ (),
-    tfListener_ (),
-    tfBroadcaster_ ()
+    tfListener_ (nodeHandle_, ros::Duration (10), true),
+    tfBroadcaster_ (),
+
+    wMcNow_ (),
+    wMcCameraTime_ (),
+
+    mapMc0_ (),
+
+    c0Mc_ (),
+
+    cMmap_ (),
+    cMmapCorrected_ (),
+
+    firstTime_ (true)
 {
   // Parameters definition.
   std::string cameraTopicPrefix;
@@ -107,10 +168,10 @@ SlamNode::SlamNode ()
     ("camera_position", 1);
 
   // Subscribers creation.
-  leftImageSub_.subscribe (imageTransport_, leftImageTopic, 1);
-  leftCameraSub_.subscribe (nodeHandle_, leftCameraTopic, 1);
-  rightImageSub_.subscribe (imageTransport_, rightImageTopic, 1);
-  rightCameraSub_.subscribe (nodeHandle_, rightCameraTopic, 1);
+  leftImageSub_.subscribe (imageTransport_, leftImageTopic, 10);
+  leftCameraSub_.subscribe (nodeHandle_, leftCameraTopic, 10);
+  rightImageSub_.subscribe (imageTransport_, rightImageTopic, 10);
+  rightCameraSub_.subscribe (nodeHandle_, rightCameraTopic, 10);
 
   // Message filter creation.
   sync_.connectInput (leftImageSub_, leftCameraSub_,
@@ -121,6 +182,11 @@ SlamNode::SlamNode ()
      (&SlamNode::imageCallback, this, _1, _2, _3, _4));
 
   waitForImage ();
+
+  // Initialize tf messages.
+  cMmap_.frame_id_ = leftImage_.header.frame_id;
+  cMmap_.child_frame_id_ = mapFrameId_;
+
   if (!ros::ok())
     return;
   if (!imageInitialized ())
@@ -144,184 +210,153 @@ SlamNode::waitForImage ()
 }
 
 void
+SlamNode::retrieveCameraPositionUsingControl ()
+{
+  static const char* worldFrameId = "/world";
+
+  try
+    {
+      // camera position w.r.t. world frame
+      tfListener_.lookupTransform
+	(worldFrameId, leftImage_.header.frame_id,
+	 ros::Time (), wMcNow_);
+      tfListener_.lookupTransform
+	(worldFrameId, leftImage_.header.frame_id,
+	 leftImage_.header.stamp, wMcCameraTime_);
+
+      ROS_DEBUG_THROTTLE
+	(1.,
+	 "camera position w.r.t. world frame sucessfully retrieved");
+    }
+  catch (const tf::TransformException& e)
+    {
+      ROS_DEBUG_STREAM_THROTTLE
+	(1.,
+	 "failed to retrieve camera position w.r.t. world frame\n"
+	 << e.what ());
+    }
+}
+
+void
+SlamNode::estimateCameraPosition ()
+{
+}
+
+void
+SlamNode::localizeCamera ()
+{
+  static const bool controlOnly = false;
+
+  if (controlOnly)
+    {
+      cMmap_.setData (wMcCameraTime_.inverse ());
+      cMmap_.stamp_ = wMcCameraTime_.stamp_;
+      return;
+    }
+
+  if (firstTime_)
+    {
+      // We need control data at the first time to initialize the SLAM
+      // correctly.
+      if (wMcCameraTime_.stamp_ != leftImage_.header.stamp)
+	return;
+      mapMc0_ = wMcCameraTime_;
+      ROS_INFO_STREAM ("initial camera position initialization\n"
+		       << debug::getPoseString(mapMc0_));
+    }
+
+  // We already localized the robot on the current image, nothing to do.
+  if (cMmap_.stamp_ == leftImage_.header.stamp)
+    return;
+
+  localization_.Localization_Step
+    (&leftImage_.data[0], &rightImage_.data[0], 1);
+
+  //c0Mc_.stamp_ = leftImage_.header.stamp;
+  c0Mc_.getOrigin ()[0] = localization_.Get_X_Pose () / 1000.;
+  c0Mc_.getOrigin ()[1] = localization_.Get_Y_Pose () / 1000.;
+  c0Mc_.getOrigin ()[2] = localization_.Get_Z_Pose () / 1000.;
+
+  btQuaternion q
+    (localization_.Get_qX_Pose (),
+     localization_.Get_qY_Pose (),
+     localization_.Get_qZ_Pose (),
+     localization_.Get_q0_Pose ());
+  c0Mc_.getBasis () = btMatrix3x3 (q);
+
+  if(localization_.Get_Rejected_Pose ())
+    ROS_WARN_THROTTLE(1., "rejected pose");
+  if(localization_.Get_Tracking_Lost ())
+    {
+      ROS_WARN_THROTTLE(1., "tracking lost");
+      return;
+    }
+
+  if (firstTime_)
+    {
+      firstTime_ = false;
+      ROS_INFO ("first localization went well");
+    }
+
+  btTransform c0Mmap = mapMc0_.inverse ();
+  btTransform cMc0 = c0Mc_.inverse ();
+
+
+  cMmap_.setData (cMc0 * c0Mmap);
+  cMmap_.stamp_ = wMcCameraTime_.stamp_;
+}
+
+void
+SlamNode::correctCameraPosition ()
+{
+  cMmapCorrected_ = cMmap_;
+  cMmapCorrected_.frame_id_ = cMmap_.frame_id_;
+  cMmapCorrected_.child_frame_id_ = "/map_corrected";
+
+  btTransform cMw = wMcCameraTime_.inverse ();
+
+  cMmapCorrected_.getOrigin ()[1] = cMw.getOrigin ()[1];
+
+  double y = 0.;
+  double p = 0.;
+  double r = 0.;
+
+  double yCtrl = 0.;
+  double pCtrl = 0.;
+  double rCtrl = 0.;
+
+  cMmapCorrected_.getBasis ().getEulerYPR (y, p, r);
+  cMw.getBasis ().getEulerYPR (yCtrl, pCtrl, rCtrl);
+
+  cMmapCorrected_.getBasis ().setEulerYPR (yCtrl, p, rCtrl);
+}
+
+void
+SlamNode::publishMapFrame ()
+{
+  if (firstTime_)
+    return;
+
+  //FIXME this is cMmap at camera time, move it to now...
+  tfBroadcaster_.sendTransform (cMmap_);
+  tfBroadcaster_.sendTransform (cMmapCorrected_);
+  //cameraTransformationPub_.publish (cMmapCorrected_);
+}
+
+void
 SlamNode::spin ()
 {
   ros::Rate rate (100);
 
-  geometry_msgs::TransformStamped cameraTransformation;
-  cameraTransformation.header.seq = 0;
-  cameraTransformation.header.stamp = ros::Time::now ();
-
-  // The world frame is the first position of the left camera when the
-  // system starts.
-  cameraTransformation.header.frame_id = "/slam_world";
-
-  // The camera position returned by the localization system is the
-  // *LEFT* camera position.
-  cameraTransformation.child_frame_id = leftCamera_.header.frame_id;
-
-  unsigned lastSeq = leftCamera_.header.seq - 1;
-
-  // camera position w.r.t. slam world
-  // We make here the assumption that the slam world is "map".
-  tf::StampedTransform mapMc;
-
-  // base link position w.r.t camera
-  tf::StampedTransform cMbl;
-  // base link position w.r.t. map frame
-  tf::StampedTransform mapMbl;
-
-
-  tf::StampedTransform c0Mc;
-  tf::StampedTransform c0Mc_command;
-  tf::StampedTransform mapMc0
-    (tf::Transform (btQuaternion (-0.543, 0.553, -0.455, 0.439),
-		    btVector3 (0.106, 0.074, 1.347)),
-     ros::Time::now (), "", "");
-
-  tf::StampedTransform wMc;
-
-  ROS_INFO("starting");
   while (ros::ok ())
     {
-      // Make sure each image is processed once.
-      if (leftCamera_.header.seq > lastSeq)
-	{
-	  lastSeq = leftCamera_.header.seq;
+      retrieveCameraPositionUsingControl ();
+      localizeCamera ();
+      correctCameraPosition ();
+      publishMapFrame ();
 
-	  // Update header.
-	  ++cameraTransformation.header.seq;
-	  cameraTransformation.header.stamp = leftCamera_.header.stamp;
-
-	  // If possible, use command to set the roll, pitch
-	  // camera orientation and the Z component (height) of
-	  // the translation.
-	  //
-	  // The assumption is that knowing that the robot is
-	  // lying on a flat ground the roll, pitch and Z
-	  // element cannot drift from their reference
-	  // position. However, this neglects the robot
-	  // flexibility.
-	  try
-	    {
-	      tfListener_.lookupTransform
-		(cameraTransformation.child_frame_id,
-		 "/world", ros::Time(0), wMc);
-
-	      c0Mc_command.mult(mapMc0.inverse (), wMc);
-
-	      btMatrix3x3 R = c0Mc_command.getBasis ();
-	      double roll = 0;
-	      double pitch = 0;
-	      double yaw = 0;
-	      R.getEulerYPR (yaw, pitch, roll);
-
-	      // Update the camera pose estimation.
-	      TooN::Vector<3> pos;
-	      pos[0] = c0Mc_command.getOrigin ()[2]; // Z
-	      pos[1] = roll;
-	      pos[2] = pitch;
-	      localization_.Set_Camera_TPose(pos);
-	      //FIXME: this is in world frame!!
-	    }
-	  catch(tf::TransformException ex)
-	    {
-	      ROS_DEBUG_THROTTLE (1,
-				  "failed to retrieve world"
-				  " position w.r.t. camera frame.");
-	    }
-
-	  // Localize the camera.
-	  localization_.Localization_Step
-	    (&leftImage_.data[0], &rightImage_.data[0], 1);
-
-	  if(localization_.Get_Tracking_Lost ())
-	    ROS_WARN_THROTTLE(1., "tracking lost");
-	  if(localization_.Get_Rejected_Pose ())
-	    ROS_WARN_THROTTLE(1., "rejected pose");
-
-	  //if(true)
-	  if (!localization_.Get_Tracking_Lost ())
-	    {
-	      // Copy the new camera position, convert to SI.
-	      cameraTransformation.transform.translation.x =
-		localization_.Get_X_Pose () / 1000.;
-	      cameraTransformation.transform.translation.y =
-		localization_.Get_Y_Pose () / 1000.;
-	      cameraTransformation.transform.translation.z =
-		localization_.Get_Z_Pose () / 1000.;
-
-	      cameraTransformation.transform.rotation.x =
-		localization_.Get_qX_Pose ();
-	      cameraTransformation.transform.rotation.y =
-		localization_.Get_qY_Pose ();
-	      cameraTransformation.transform.rotation.z =
-		localization_.Get_qZ_Pose ();
-	      cameraTransformation.transform.rotation.w =
-		localization_.Get_q0_Pose ();
-
-	      // Publish the new camera position.
-	      cameraTransformationPub_.publish (cameraTransformation);
-
-	      // Publish to tf.
-	      try
-		{
-		  transformStampedMsgToTF
-		    (cameraTransformation, c0Mc);
-		  // tfListener_.lookupTransform
-		  //   (cameraTransformation.child_frame_id,
-		  //    baseLinkFrameId_,
-		  //    leftCamera_.header.stamp, cMbl);
-
-		  // Compute base link position w.r.t. to map frame to
-		  // localize the robot.
-		  mapMc.mult(mapMc0, c0Mc);
-		  //mapMbl.mult(mapMc, cMbl);
-
-		  tf::StampedTransform cMmap
-		    (mapMc.inverse(), cameraTransformation.header.stamp,
-		     cameraTransformation.child_frame_id, mapFrameId_);
-
-
-		  // If possible, use command to set the roll, pitch
-		  // camera orientation and the Z component (height) of
-		  // the translation.
-		  //
-		  // The assumption is that knowing that the robot is
-		  // lying on a flat ground the roll, pitch and Z
-		  // element cannot drift from their reference
-		  // position. However, this neglects the robot
-		  // flexibility.
-		  btMatrix3x3& R = cMmap.getBasis();
-
-		  btScalar yaw = 0.;
-		  btScalar pitch = 0.;
-		  btScalar roll = 0.;
-		  R.getEulerYPR(yaw, pitch, roll);
-
-		  btMatrix3x3 R0 = wMc.getBasis();
-		  btScalar yaw0 = 0.;
-		  btScalar pitch0 = 0.;
-		  btScalar roll0 = 0.;
-		  R0.getEulerYPR(yaw0, pitch0, roll0);
-
-		  //R.setEulerYPR(yaw0, pitch, roll);
-		  //R[2][3] = R0[2][3];
-
-		  tfBroadcaster_.sendTransform(cMmap);
-		}
-	      catch (tf::TransformException ex)
-		{
-		  ROS_DEBUG_THROTTLE (1,
-				      "failed to retrieve base link"
-				      " position w.r.t. camera frame.");
-		}
-	    }
-	  else
-	    ROS_WARN_THROTTLE(1., "rejected pose");
-	}
-      rate.sleep ();
       ros::spinOnce ();
+      rate.sleep ();
     }
 }
 
