@@ -113,6 +113,9 @@ private:
   tf::StampedTransform cMmap_;
   tf::StampedTransform cMmapCorrected_;
   bool firstTime_;
+
+  bool localizeFromControlOnly_;
+  bool givePriorToSlam_;
 };
 
 SlamNode::SlamNode ()
@@ -146,7 +149,10 @@ SlamNode::SlamNode ()
     cMmap_ (),
     cMmapCorrected_ (),
 
-    firstTime_ (true)
+    firstTime_ (true),
+
+    localizeFromControlOnly_ (false),
+    givePriorToSlam_ (true)
 {
   // Parameters definition.
   std::string cameraTopicPrefix;
@@ -154,6 +160,11 @@ SlamNode::SlamNode ()
 
   ros::param::param<std::string>("~map_frame_id", mapFrameId_, "/map");
   ros::param::param<std::string>("~world_frame_id", worldFrameId_, "/world");
+
+  ros::param::param<bool>
+    ("~localize_from_control_only", localizeFromControlOnly_, false);
+  ros::param::param<bool>
+    ("~give_slam_prior", givePriorToSlam_, true);
 
   // Topic name construction.
   std::string leftImageTopic = cameraTopicPrefix + "/left/image_mono";
@@ -237,14 +248,53 @@ SlamNode::retrieveCameraPositionUsingControl ()
 void
 SlamNode::estimateCameraPosition ()
 {
+  if (!givePriorToSlam_)
+    return;
+
+  if (firstTime_)
+    return;
+
+  TooN::Vector<3> pos;
+  TooN::Vector<4> qori;
+
+  btTransform c0McEstimated = mapMc0_.inverse () * wMcCameraTime_;
+
+  // Y is provided by the control (in optical frame).
+  pos[0] = cMmap_.getOrigin ()[0];
+  pos[1] = c0McEstimated.getOrigin ()[1];
+  pos[2] = cMmap_.getOrigin ()[2];
+
+  // pitch is given by the SLAM, the other by the control (in optical
+  // frame).
+  double y = 0.;
+  double p = 0.;
+  double r = 0.;
+
+  double yCtrl = 0.;
+  double pCtrl = 0.;
+  double rCtrl = 0.;
+
+  cMmap_.getBasis ().getEulerYPR (y, p, r);
+  c0McEstimated.getBasis ().getEulerYPR (yCtrl, pCtrl, rCtrl);
+
+  btMatrix3x3 rEstimated;
+  rEstimated.setEulerYPR (yCtrl, p, rCtrl);
+  btQuaternion qEstimated;
+  rEstimated.getRotation (qEstimated);
+
+  qori[0] = qEstimated.getX ();
+  qori[1] = qEstimated.getY ();
+  qori[2] = qEstimated.getZ ();
+  qori[3] = qEstimated.getW ();
+
+  localization_.Set_Camera_TPose (pos);
+  localization_.Set_Camera_qCam (qori);
 }
 
 void
 SlamNode::localizeCamera ()
 {
-  static const bool controlOnly = false;
-
-  if (controlOnly)
+  if (localizeFromControlOnly_)
     {
       cMmap_.setData (wMcCameraTime_.inverse ());
       cMmap_.stamp_ = wMcCameraTime_.stamp_;
@@ -351,6 +401,7 @@ SlamNode::spin ()
   while (ros::ok ())
     {
       retrieveCameraPositionUsingControl ();
+      estimateCameraPosition ();
       localizeCamera ();
       correctCameraPosition ();
       publishMapFrame ();
