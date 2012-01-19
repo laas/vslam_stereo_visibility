@@ -100,7 +100,6 @@ private:
 
   std::string mapFrameId_;
   std::string worldFrameId_;
-  std::string baseLinkFrameId_;
   tf::TransformListener tfListener_;
   tf::TransformBroadcaster tfBroadcaster_;
 
@@ -134,7 +133,6 @@ SlamNode::SlamNode ()
 
     mapFrameId_ (),
     worldFrameId_ (),
-    baseLinkFrameId_ (),
     tfListener_ (nodeHandle_, ros::Duration (10), true),
     tfBroadcaster_ (),
 
@@ -156,8 +154,6 @@ SlamNode::SlamNode ()
 
   ros::param::param<std::string>("~map_frame_id", mapFrameId_, "/map");
   ros::param::param<std::string>("~world_frame_id", worldFrameId_, "/world");
-  ros::param::param<std::string>("~base_link_frame_id", baseLinkFrameId_,
-				 "/left_ankle"); //FIXME:
 
   // Topic name construction.
   std::string leftImageTopic = cameraTopicPrefix + "/left/image_mono";
@@ -341,7 +337,10 @@ SlamNode::publishMapFrame ()
   //FIXME this is cMmap at camera time, move it to now...
   tfBroadcaster_.sendTransform (cMmap_);
   tfBroadcaster_.sendTransform (cMmapCorrected_);
-  //cameraTransformationPub_.publish (cMmapCorrected_);
+
+  geometry_msgs::TransformStamped msg;
+  tf::transformStampedTFToMsg (cMmapCorrected_, msg);
+  cameraTransformationPub_.publish (msg);
 }
 
 void
