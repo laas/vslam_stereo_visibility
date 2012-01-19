@@ -99,6 +99,7 @@ private:
   sensor_msgs::CameraInfo rightCamera_;
 
   std::string mapFrameId_;
+  std::string worldFrameId_;
   std::string baseLinkFrameId_;
   tf::TransformListener tfListener_;
   tf::TransformBroadcaster tfBroadcaster_;
@@ -132,6 +133,7 @@ SlamNode::SlamNode ()
     rightCamera_ (),
 
     mapFrameId_ (),
+    worldFrameId_ (),
     baseLinkFrameId_ (),
     tfListener_ (nodeHandle_, ros::Duration (10), true),
     tfBroadcaster_ (),
@@ -153,6 +155,7 @@ SlamNode::SlamNode ()
   ros::param::param<std::string>("~camera_prefix", cameraTopicPrefix, "");
 
   ros::param::param<std::string>("~map_frame_id", mapFrameId_, "/map");
+  ros::param::param<std::string>("~world_frame_id", worldFrameId_, "/world");
   ros::param::param<std::string>("~base_link_frame_id", baseLinkFrameId_,
 				 "/left_ankle"); //FIXME:
 
@@ -212,16 +215,14 @@ SlamNode::waitForImage ()
 void
 SlamNode::retrieveCameraPositionUsingControl ()
 {
-  static const char* worldFrameId = "/world";
-
   try
     {
       // camera position w.r.t. world frame
       tfListener_.lookupTransform
-	(worldFrameId, leftImage_.header.frame_id,
+	(worldFrameId_, leftImage_.header.frame_id,
 	 ros::Time (), wMcNow_);
       tfListener_.lookupTransform
-	(worldFrameId, leftImage_.header.frame_id,
+	(worldFrameId_, leftImage_.header.frame_id,
 	 leftImage_.header.stamp, wMcCameraTime_);
 
       ROS_DEBUG_THROTTLE
