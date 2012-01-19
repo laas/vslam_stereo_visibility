@@ -116,6 +116,7 @@ private:
 
   bool localizeFromControlOnly_;
   bool givePriorToSlam_;
+  bool postProcessPose_;
 };
 
 SlamNode::SlamNode ()
@@ -152,7 +153,8 @@ SlamNode::SlamNode ()
     firstTime_ (true),
 
     localizeFromControlOnly_ (false),
-    givePriorToSlam_ (true)
+    givePriorToSlam_ (true),
+    postProcessPose_ (true)
 {
   // Parameters definition.
   std::string cameraTopicPrefix;
@@ -165,6 +167,19 @@ SlamNode::SlamNode ()
     ("~localize_from_control_only", localizeFromControlOnly_, false);
   ros::param::param<bool>
     ("~give_slam_prior", givePriorToSlam_, true);
+  ros::param::param<bool>
+    ("~postprocess_pose", postProcessPose_, true);
+
+  ROS_INFO_STREAM
+    ("camera prefix         : " << cameraTopicPrefix << "\n"
+     << "map frame id          : " << mapFrameId_ << "\n"
+     << "world frame id        : " << worldFrameId_ << "\n"
+     << "simulate localization: "
+     << (localizeFromControlOnly_ ? "true" : "false") << "\n"
+     << "give prior to SLAM   : "
+     << (givePriorToSlam_ ? "true" : "false") << "\n"
+     << "post-process pose    : "
+     << (postProcessPose_ ? "true" : "false"));
 
   // Topic name construction.
   std::string leftImageTopic = cameraTopicPrefix + "/left/image_mono";
@@ -359,6 +374,9 @@ SlamNode::correctCameraPosition ()
   cMmapCorrected_ = cMmap_;
   cMmapCorrected_.frame_id_ = cMmap_.frame_id_;
   cMmapCorrected_.child_frame_id_ = "/map_corrected";
+
+  if (!postProcessPose_)
+    return;
 
   btTransform cMw = wMcCameraTime_.inverse ();
 
