@@ -39,7 +39,7 @@ import roslib; roslib.load_manifest('dynamic_graph_bridge')
 import rospy
 
 import tf
-from geometry_msgs.msg import Vector3Stamped
+from geometry_msgs.msg import TransformStamped, Vector3Stamped
 
 from tf.transformations import quaternion_from_matrix, \
     translation_from_matrix, quaternion_from_matrix
@@ -67,6 +67,10 @@ rospy.loginfo(banner)
 tl = tf.TransformListener(True, rospy.Duration(10.))
 
 pub = rospy.Publisher('error', Vector3Stamped)
+
+pubDbgMap = rospy.Publisher('error_mapPose', TransformStamped)
+pubDbgPlan = rospy.Publisher('error_planPose', TransformStamped)
+
 error = Vector3Stamped()
 error.header.seq = 0
 error.header.frame_id = baseLinkPlanFrameId
@@ -112,17 +116,17 @@ while not rospy.is_shutdown():
     # Then subscribe an optional offset.
     tPlan += offsetPlan
     try:
-        (wMhbl_q, wMhbl_t) = tl.lookupTransform(
+        (wMhbl_t, wMhbl_q) = tl.lookupTransform(
             mapFrameId, baseLinkMapFrameId, tMap)
-        (wMbl_q, wMbl_t) = tl.lookupTransform(
+        (wMbl_t, wMbl_q) = tl.lookupTransform(
             planFrameId, baseLinkPlanFrameId, t)
     except Exception as e:
         rospy.logwarn(e)
         continue
 
-    wMhbl = np.matrix(tl.fromTranslationRotation(wMhbl_q, wMhbl_t))
+    wMhbl = np.matrix(tl.fromTranslationRotation(wMhbl_t, wMhbl_q))
 
-    wMbl = np.matrix(tl.fromTranslationRotation(wMbl_q, wMbl_t))
+    wMbl = np.matrix(tl.fromTranslationRotation(wMbl_t, wMbl_q))
 
     hblMbl = np.linalg.inv(wMhbl) * wMbl
 
@@ -133,3 +137,24 @@ while not rospy.is_shutdown():
     error.vector.z = atan2(hblMbl[1, 0], hblMbl[0, 0])
 
     pub.publish(error)
+
+    dbgMap = TransformStamped()
+    dbgMap.transform.translation.x = wMhbl_t[0]
+    dbgMap.transform.translation.y = wMhbl_t[1]
+    dbgMap.transform.translation.z = wMhbl_t[2]
+    dbgMap.transform.rotation.x = wMhbl_q[0]
+    dbgMap.transform.rotation.y = wMhbl_q[1]
+    dbgMap.transform.rotation.z = wMhbl_q[2]
+    dbgMap.transform.rotation.w = wMhbl_q[3]
+
+    dbgPlan = TransformStamped()
+    dbgPlan.transform.translation.x = wMbl_t[0]
+    dbgPlan.transform.translation.y = wMbl_t[1]
+    dbgPlan.transform.translation.z = wMbl_t[2]
+    dbgPlan.transform.rotation.x = wMbl_q[0]
+    dbgPlan.transform.rotation.y = wMbl_q[1]
+    dbgPlan.transform.rotation.z = wMbl_q[2]
+    dbgPlan.transform.rotation.w = wMbl_q[3]
+
+    pubDbgMap.publish(dbgMap)
+    pubDbgPlan.publish(dbgPlan)

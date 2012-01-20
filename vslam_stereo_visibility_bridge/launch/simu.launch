@@ -18,12 +18,12 @@
 
   <!-- Play the video sequence, publish the clock topic to preserve
        the original timestamps. -->
-  <node pkg="rosbag" type="rosbag" name="rosbag" args="play --clock -l
-						       $(arg bag_file)"/>
+  <node pkg="rosbag" type="rosbag" name="rosbag"
+	args="play --clock -k $(arg bag_file)"/>
 
   <!-- Record the camera trajectory. -->
   <node pkg="rosbag" type="rosbag" name="rosbag_record"
-args="record -o /tmp/slam-camera_position /slam_node/camera_position /error"/>
+args="record -o /tmp/slam-camera_position /slam_node/camera_position /error /error_mapPose /error_planPose"/>
 
   <!-- Launch the tracking node -->
   <node pkg="vslam_stereo_visibility_bridge" type="vslam"

@@ -327,6 +327,7 @@ SlamNode::localizeCamera ()
     {
       cMmap_.setData (wMcCameraTime_.inverse ());
       cMmap_.stamp_ = wMcCameraTime_.stamp_;
+      firstTime_ = false;
       return;
     }
 
