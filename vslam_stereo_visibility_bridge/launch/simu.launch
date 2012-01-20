@@ -8,6 +8,7 @@
   <arg name="bag_file" />
   <arg name="give_prior" default="true" />
   <arg name="control_only" default="false" />
+  <arg name="disable_control" default="false" />
 
   <!-- Use the timestamps embedded in the ROS bag file -->
   <param name="use_sim_time" value="true" />
@@ -23,7 +24,7 @@
 
   <!-- Launch the tracking node -->
   <node pkg="vslam_stereo_visibility_bridge" type="vslam"
-	name="tracker_mbt"
+	name="vslam"
 	cwd="node">
     <param name="camera_prefix" value="/wide" />
 
@@ -31,6 +32,7 @@
     <param name="world_frame_id" value="/world"/>
     <param name="localize_from_control_only" value="$(arg control_only)" />
     <param name="give_slam_prior" value="$(arg give_prior)" />
+    <param name="disable_control" value="$(arg disable_control)" />
   </node>
 
   <!-- Image processing nodes. -->
@@ -43,8 +45,9 @@
 
   <!-- command -->
   <param name="robot_description"
-	 textfile="$(find hrp2_14_description)/urdf/hrp2.urdf" />
-  <group ns="dynamic_graph">
+	 textfile="$(find hrp2_14_description)/urdf/hrp2.urdf"
+	 unless="$(arg disable_control)" />
+  <group ns="dynamic_graph" unless="$(arg disable_control)">
     <node name="robot_state_publisher"
 	  pkg="robot_state_publisher"
 	  type="state_publisher"
@@ -55,6 +58,7 @@
 	  pkg="dynamic_graph_bridge"
 	  type="tf_broadcaster"
 	  respawn="true"
+	  unless="$(arg disable_control)"
 	  />
   </group>
 </launch>

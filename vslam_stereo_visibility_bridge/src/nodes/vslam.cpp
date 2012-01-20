@@ -117,6 +117,7 @@ private:
   bool localizeFromControlOnly_;
   bool givePriorToSlam_;
   bool postProcessPose_;
+  bool disableControl_;
 };
 
 SlamNode::SlamNode ()
@@ -154,7 +155,8 @@ SlamNode::SlamNode ()
 
     localizeFromControlOnly_ (false),
     givePriorToSlam_ (true),
-    postProcessPose_ (true)
+    postProcessPose_ (true),
+    disableControl_ (false)
 {
   // Parameters definition.
   std::string cameraTopicPrefix;
@@ -169,6 +171,8 @@ SlamNode::SlamNode ()
     ("~give_slam_prior", givePriorToSlam_, true);
   ros::param::param<bool>
     ("~postprocess_pose", postProcessPose_, true);
+  ros::param::param<bool>
+    ("~disable_control", disableControl_, false);
 
   ROS_INFO_STREAM
     ("camera prefix         : " << cameraTopicPrefix << "\n"
@@ -179,7 +183,12 @@ SlamNode::SlamNode ()
      << "give prior to SLAM   : "
      << (givePriorToSlam_ ? "true" : "false") << "\n"
      << "post-process pose    : "
-     << (postProcessPose_ ? "true" : "false"));
+     << (postProcessPose_ ? "true" : "false")
+     << "disable control      : "
+     << (disableControl_ ? "true" : "false"));
+
+  if (disableControl_ && localizeFromControlOnly_)
+    throw std::runtime_error ("incompatible options");
 
   // Topic name construction.
   std::string leftImageTopic = cameraTopicPrefix + "/left/image_mono";
@@ -212,6 +221,9 @@ SlamNode::SlamNode ()
   cMmap_.frame_id_ = leftImage_.header.frame_id;
   cMmap_.child_frame_id_ = mapFrameId_;
 
+  cMmapCorrected_.frame_id_ = leftImage_.header.frame_id;
+  cMmapCorrected_.child_frame_id_ = mapFrameId_;
+
   if (!ros::ok())
     return;
   if (!imageInitialized ())
@@ -237,6 +249,8 @@ SlamNode::waitForImage ()
 void
 SlamNode::retrieveCameraPositionUsingControl ()
 {
+  if (disableControl_)
+    return;
   try
     {
       // camera position w.r.t. world frame
@@ -263,7 +277,7 @@ SlamNode::retrieveCameraPositionUsingControl ()
 void
 SlamNode::estimateCameraPosition ()
 {
-  if (!givePriorToSlam_)
+  if (!givePriorToSlam_ || disableControl_)
     return;
 
   if (firstTime_)
@@ -318,11 +332,21 @@ SlamNode::localizeCamera ()
 
   if (firstTime_)
     {
-      // We need control data at the first time to initialize the SLAM
-      // correctly.
-      if (wMcCameraTime_.stamp_ != leftImage_.header.stamp)
-	return;
-      mapMc0_ = wMcCameraTime_;
+      if (disableControl_)
+	{
+	  mapMc0_.getOrigin ()[0] = 0.;
+	  mapMc0_.getOrigin ()[1] = 0.;
+	  mapMc0_.getOrigin ()[2] = 0.;
+	  mapMc0_.getBasis ().setIdentity ();
+	}
+      else
+	{
+	  // We need control data at the first time to initialize the
+	  // SLAM correctly.
+	  if (wMcCameraTime_.stamp_ != leftImage_.header.stamp)
+	    return;
+	  mapMc0_ = wMcCameraTime_;
+	}
       ROS_INFO_STREAM ("initial camera position initialization\n"
 		       << debug::getPoseString(mapMc0_));
     }
@@ -375,7 +399,7 @@ SlamNode::correctCameraPosition ()
   cMmapCorrected_.frame_id_ = cMmap_.frame_id_;
   cMmapCorrected_.child_frame_id_ = "/map_corrected";
 
-  if (!postProcessPose_)
+  if (!postProcessPose_ || disableControl_)
     return;
 
   btTransform cMw = wMcCameraTime_.inverse ();
