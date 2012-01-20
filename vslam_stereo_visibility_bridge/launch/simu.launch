@@ -23,7 +23,7 @@
 
   <!-- Record the camera trajectory. -->
   <node pkg="rosbag" type="rosbag" name="rosbag_record"
-	args="record -o /tmp/slam-camera_position /slam_node/camera_position"/>
+args="record -o /tmp/slam-camera_position /slam_node/camera_position /error"/>
 
   <!-- Launch the tracking node -->
   <node pkg="vslam_stereo_visibility_bridge" type="vslam"
@@ -66,4 +66,15 @@
 	  unless="$(arg disable_control)"
 	  />
   </group>
+
+  <node name="error_estimator"
+	pkg="vslam_stereo_visibility_bridge"
+	type="error-estimation.py"
+	respawn="true"
+	unless="$(arg disable_control)">
+    <param name="base_link_map_frame_id" value="/left_ankle" />
+    <param name="base_link_plan_frame_id" value="/plan_left_ankle" />
+    <param name="map_frame_id" value="/map" />
+    <param name="plan_frame_id" value="/world" />
+  </node>
 </launch>
