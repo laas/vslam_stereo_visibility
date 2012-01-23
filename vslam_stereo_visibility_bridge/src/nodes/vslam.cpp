@@ -261,6 +261,8 @@ SlamNode::retrieveCameraPositionUsingControl ()
 	(worldFrameId_, leftImage_.header.frame_id,
 	 leftImage_.header.stamp, wMcCameraTime_);
 
+      assert (wMcCameraTime_.stamp_ == leftImage_.header.stamp);
+
       ROS_DEBUG_THROTTLE
 	(1.,
 	 "camera position w.r.t. world frame sucessfully retrieved");
@@ -277,9 +279,8 @@ SlamNode::retrieveCameraPositionUsingControl ()
 void
 SlamNode::estimateCameraPosition ()
 {
-  if (!givePriorToSlam_ || disableControl_)
+  if (!givePriorToSlam_ || disableControl_ || localizeFromControlOnly_)
     return;
-
   if (firstTime_)
     return;
 
@@ -325,6 +326,9 @@ SlamNode::localizeCamera ()
 {
   if (localizeFromControlOnly_)
     {
+      // Check that data have been received.
+      if (wMcCameraTime_.stamp_.nsec == 0)
+	return;
       cMmap_.setData (wMcCameraTime_.inverse ());
       cMmap_.stamp_ = wMcCameraTime_.stamp_;
       firstTime_ = false;
@@ -359,7 +363,6 @@ SlamNode::localizeCamera ()
   localization_.Localization_Step
     (&leftImage_.data[0], &rightImage_.data[0], 1);
 
-  //c0Mc_.stamp_ = leftImage_.header.stamp;
   c0Mc_.getOrigin ()[0] = localization_.Get_X_Pose () / 1000.;
   c0Mc_.getOrigin ()[1] = localization_.Get_Y_Pose () / 1000.;
   c0Mc_.getOrigin ()[2] = localization_.Get_Z_Pose () / 1000.;
@@ -390,17 +393,22 @@ SlamNode::localizeCamera ()
 
 
   cMmap_.setData (cMc0 * c0Mmap);
-  cMmap_.stamp_ = wMcCameraTime_.stamp_;
+  cMmap_.stamp_ = leftImage_.header.stamp;
 }
 
 void
 SlamNode::correctCameraPosition ()
 {
   cMmapCorrected_ = cMmap_;
+  cMmapCorrected_.stamp_ = cMmap_.stamp_;
   cMmapCorrected_.frame_id_ = cMmap_.frame_id_;
   cMmapCorrected_.child_frame_id_ = "/map_corrected";
 
   if (!postProcessPose_ || disableControl_)
+    return;
+
+  // Make sure we received control data.
+  if (wMcCameraTime_.stamp_.nsec == 0)
     return;
 
   btTransform cMw = wMcCameraTime_.inverse ();

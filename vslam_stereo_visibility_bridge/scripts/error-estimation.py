@@ -75,6 +75,13 @@ error = Vector3Stamped()
 error.header.seq = 0
 error.header.frame_id = baseLinkPlanFrameId
 
+dbgMap = TransformStamped()
+dbgMap.header.seq = 0
+dbgMap.header.frame_id = mapFrameId
+dbgPlan = TransformStamped()
+dbgPlan.header.seq = 0
+dbgPlan.header.frame_id = planFrameId
+
 
 ok = False
 rospy.loginfo("Waiting for frames...")
@@ -119,7 +126,7 @@ while not rospy.is_shutdown():
         (wMhbl_t, wMhbl_q) = tl.lookupTransform(
             mapFrameId, baseLinkMapFrameId, tMap)
         (wMbl_t, wMbl_q) = tl.lookupTransform(
-            planFrameId, baseLinkPlanFrameId, t)
+            planFrameId, baseLinkPlanFrameId, tPlan)
     except Exception as e:
         rospy.logwarn(e)
         continue
@@ -131,14 +138,16 @@ while not rospy.is_shutdown():
     hblMbl = np.linalg.inv(wMhbl) * wMbl
 
     error.header.seq += 1
-    error.header.stamp = rospy.Time.now()
+    error.header.stamp = tMap # Here we used tMap to ignore offset.
     error.vector.x = hblMbl[0, 3]
     error.vector.y = hblMbl[1, 3]
     error.vector.z = atan2(hblMbl[1, 0], hblMbl[0, 0])
 
     pub.publish(error)
 
-    dbgMap = TransformStamped()
+
+    dbgMap.header.seq += 1
+    dbgMap.header.stamp = tMap
     dbgMap.transform.translation.x = wMhbl_t[0]
     dbgMap.transform.translation.y = wMhbl_t[1]
     dbgMap.transform.translation.z = wMhbl_t[2]
@@ -147,7 +156,8 @@ while not rospy.is_shutdown():
     dbgMap.transform.rotation.z = wMhbl_q[2]
     dbgMap.transform.rotation.w = wMhbl_q[3]
 
-    dbgPlan = TransformStamped()
+    dbgPlan.header.seq += 1
+    dbgPlan.header.stamp = tPlan
     dbgPlan.transform.translation.x = wMbl_t[0]
     dbgPlan.transform.translation.y = wMbl_t[1]
     dbgPlan.transform.translation.z = wMbl_t[2]
