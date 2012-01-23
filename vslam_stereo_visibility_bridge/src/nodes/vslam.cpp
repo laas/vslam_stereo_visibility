@@ -92,6 +92,9 @@ private:
   message_filters::Synchronizer<policy_t> sync_;
 
   ros::Publisher cameraTransformationPub_;
+  ros::Publisher mapFramePub_;
+  ros::Publisher mapCorrectedPub_;
+  ros::Publisher initialCameraPositionPub_;
 
   sensor_msgs::Image leftImage_;
   sensor_msgs::CameraInfo leftCamera_;
@@ -129,7 +132,11 @@ SlamNode::SlamNode ()
     rightImageSub_ (),
     rightCameraSub_ (),
     sync_ (policy_t(10)),
+
     cameraTransformationPub_ (),
+    mapFramePub_ (),
+    mapCorrectedPub_ (),
+    initialCameraPositionPub_ (),
 
     leftImage_ (),
     leftCamera_ (),
@@ -183,7 +190,7 @@ SlamNode::SlamNode ()
      << "give prior to SLAM   : "
      << (givePriorToSlam_ ? "true" : "false") << "\n"
      << "post-process pose    : "
-     << (postProcessPose_ ? "true" : "false")
+     << (postProcessPose_ ? "true" : "false") << "\n"
      << "disable control      : "
      << (disableControl_ ? "true" : "false"));
 
@@ -200,6 +207,15 @@ SlamNode::SlamNode ()
   cameraTransformationPub_ =
     nodeHandle_.advertise<geometry_msgs::TransformStamped>
     ("camera_position", 1);
+  mapFramePub_ =
+    nodeHandle_.advertise<geometry_msgs::TransformStamped>
+    ("map_frame", 1);
+  mapCorrectedPub_ =
+    nodeHandle_.advertise<geometry_msgs::TransformStamped>
+    ("map_corrected_frame", 1);
+  initialCameraPositionPub_ =
+    nodeHandle_.advertise<geometry_msgs::TransformStamped>
+    ("initial_camera_position", 1);
 
   // Subscribers creation.
   leftImageSub_.subscribe (imageTransport_, leftImageTopic, 10);
@@ -439,9 +455,37 @@ SlamNode::publishMapFrame ()
   tfBroadcaster_.sendTransform (cMmap_);
   tfBroadcaster_.sendTransform (cMmapCorrected_);
 
+  // Publish data as topics.
   geometry_msgs::TransformStamped msg;
-  tf::transformStampedTFToMsg (cMmapCorrected_, msg);
+  tf::StampedTransform t;
+
+  t.setData (c0Mc_);
+  t.stamp_ = cMmap_.stamp_;
+  t.frame_id_ = "camera_0";
+  t.child_frame_id_ = leftImage_.header.frame_id;
+  tf::transformStampedTFToMsg (t, msg);
   cameraTransformationPub_.publish (msg);
+
+  t.setData (cMmap_.inverse ());
+  t.stamp_ = cMmap_.stamp_;
+  t.frame_id_ = mapFrameId_;
+  t.child_frame_id_ = leftImage_.header.frame_id;
+  tf::transformStampedTFToMsg (t, msg);
+  mapFramePub_.publish (msg);
+
+  t.setData (cMmapCorrected_.inverse ());
+  t.stamp_ = cMmapCorrected_.stamp_;
+  t.frame_id_ = "/map_corrected";
+  t.child_frame_id_ = leftImage_.header.frame_id;
+  tf::transformStampedTFToMsg (t, msg);
+  mapCorrectedPub_.publish (msg);
+
+  t.setData (mapMc0_);
+  t.stamp_ = cMmap_.stamp_;
+  t.frame_id_ = mapFrameId_;
+  t.child_frame_id_ = "camera_0";
+  tf::transformStampedTFToMsg (t, msg);
+  initialCameraPositionPub_.publish (msg);
 }
 
 void
