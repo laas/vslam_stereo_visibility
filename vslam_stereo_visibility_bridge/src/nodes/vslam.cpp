@@ -165,6 +165,20 @@ SlamNode::SlamNode ()
     postProcessPose_ (true),
     disableControl_ (false)
 {
+  // Fill transforms with zero.
+  wMcNow_.getOrigin ().setZero ();
+  wMcNow_.getBasis ().setIdentity ();
+  wMcCameraTime_.getOrigin ().setZero ();
+  wMcCameraTime_.getBasis ().setIdentity ();
+  mapMc0_.getOrigin ().setZero ();
+  mapMc0_.getBasis ().setIdentity ();
+  c0Mc_.getOrigin ().setZero ();
+  c0Mc_.getBasis ().setIdentity ();
+  cMmap_.getOrigin ().setZero ();
+  cMmap_.getBasis ().setIdentity ();
+  cMmapCorrected_.getOrigin ().setZero ();
+  cMmapCorrected_.getBasis ().setIdentity ();
+
   // Parameters definition.
   std::string cameraTopicPrefix;
   ros::param::param<std::string>("~camera_prefix", cameraTopicPrefix, "");
