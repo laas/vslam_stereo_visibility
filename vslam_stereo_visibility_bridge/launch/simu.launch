@@ -76,5 +76,6 @@ args="record -o /tmp/slam-camera_position /slam_node/camera_position /slam_node/
     <param name="base_link_plan_frame_id" value="/plan_left_ankle" />
     <param name="map_frame_id" value="/map" />
     <param name="plan_frame_id" value="/world" />
+    <param name="nullify_error_at_startup" value="true" />
   </node>
 </launch>

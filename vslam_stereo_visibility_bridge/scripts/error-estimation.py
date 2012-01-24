@@ -55,6 +55,7 @@ baseLinkPlanFrameId = rospy.get_param(
 mapFrameId = rospy.get_param('~map_frame_id', '/world')
 planFrameId = rospy.get_param('~plan_frame_id', '/world')
 timeOffset = rospy.get_param('~offset', 0.) #FIXME:
+nullifyErrorAtStartup = rospy.get_param('~nullify_error_at_startup', False)
 
 banner  =  "Starting error estimation.\n"
 banner += "* base link (map):   {0}\n".format(baseLinkMapFrameId)
@@ -62,6 +63,7 @@ banner += "* base link (world): {0}\n".format(baseLinkPlanFrameId)
 banner += "* map frame:         {0}\n".format(mapFrameId)
 banner += "* plan frame:        {0}\n".format(planFrameId)
 banner += "* time offset:       {0}\n".format(timeOffset)
+banner += "* nullify error at startup: {0}\n".format(nullifyErrorAtStartup)
 rospy.loginfo(banner)
 
 tl = tf.TransformListener(True, rospy.Duration(10.))
@@ -81,6 +83,8 @@ dbgMap.header.frame_id = mapFrameId
 dbgPlan = TransformStamped()
 dbgPlan.header.seq = 0
 dbgPlan.header.frame_id = planFrameId
+
+initialError = np.identity(4)
 
 
 ok = False
@@ -136,6 +140,12 @@ while not rospy.is_shutdown():
     wMbl = np.matrix(tl.fromTranslationRotation(wMbl_t, wMbl_q))
 
     hblMbl = np.linalg.inv(wMhbl) * wMbl
+
+    # first time the error is computed, we nullify it if required.
+    if nullifyErrorAtStartup:
+        if error.header.seq == 0:
+            initialError = np.linalg.inv(hblMbl)
+        hblMbl = initialError * hblMbl
 
     error.header.seq += 1
     error.header.stamp = tMap # Here we used tMap to ignore offset.
