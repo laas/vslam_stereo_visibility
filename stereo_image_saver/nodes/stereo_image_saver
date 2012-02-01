@@ -1,0 +1,54 @@
+#!/usr/bin/env python
+import roslib; roslib.load_manifest('stereo_image_saver')
+import rospy
+
+import os
+import shutil
+import cv
+
+import message_filters
+from sensor_msgs.msg import Image, CameraInfo
+from camera_calibration.approxsync import ApproximateSynchronizer
+from cv_bridge import CvBridge, CvBridgeError
+
+bridgeLeft = CvBridge()
+bridgeRight = CvBridge()
+imageId = 0
+
+left_prefix = '/wide/left/'
+right_prefix = '/wide/right/'
+image_topic = 'image_mono'
+cam_topic = 'camera_info'
+
+def callback(left_image, right_image):
+    global bridgeLeft, bridgeRight, imageId
+
+    left = bridgeLeft.imgmsg_to_cv(left_image)
+    right = bridgeRight.imgmsg_to_cv(right_image)
+
+    cv.SaveImage("/tmp/calibration/left/{0:05d}.pgm".format(imageId), left)
+    cv.SaveImage("/tmp/calibration/right/{0:05d}.pgm".format(imageId), right)
+    print("Writing image {0}".format(imageId))
+
+    imageId += 1
+
+def listener():
+    rospy.init_node('stereo_image_saver', anonymous=True)
+
+    left_image_sub_topic = left_prefix + image_topic
+    right_image_sub_topic = right_prefix + image_topic
+
+    left_image_sub = message_filters.Subscriber(left_image_sub_topic, Image)
+    print("Subscribe to {0}".format(left_image_sub_topic))
+    right_image_sub = message_filters.Subscriber(right_image_sub_topic, Image)
+    print("Subscribe to {0}".format(right_image_sub_topic))
+
+    ts = ApproximateSynchronizer(0.005, [left_image_sub, right_image_sub], 10)
+    ts.registerCallback(callback)
+    rospy.spin()
+
+if __name__ == "__main__":
+    shutil.rmtree("/tmp/calibration")
+    os.makedirs("/tmp/calibration/left")
+    os.makedirs("/tmp/calibration/right")
+    listener()

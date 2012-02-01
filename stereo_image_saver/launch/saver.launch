@@ -1,0 +1,20 @@
+<!-- -*-xml-*- -->
+<launch>
+  <arg name="bag_file" />
+  <node pkg="rosbag" type="rosbag" name="rosbag"
+        args="play $(arg bag_file)"/>
+
+  <node pkg="stereo_image_saver" type="stereo_image_saver" name="stereo_image_saver">
+  </node>
+
+  <group ns="wide/left" >
+    <node pkg="image_proc" type="image_proc" name="image_proc">
+      <param name="queue_size" value="5" />
+    </node>
+  </group>
+  <group ns="wide/right" >
+    <node pkg="image_proc" type="image_proc" name="image_proc">
+      <param name="queue_size" value="5" />
+    </node>
+  </group>
+</launch>

@@ -1,0 +1,19 @@
+<package>
+  <description brief="stereo_image_saver">
+
+     stereo_image_saver
+
+  </description>
+  <author>Thomas Moulard</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url>http://ros.org/wiki/stereo_image_saver</url>
+
+  <depend package="rospy"/>
+  <depend package="camera_calibration"/>
+
+  <depend package="opencv2"/>
+  <depend package="cv_bridge"/>
+</package>
+
+
