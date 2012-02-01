@@ -1,0 +1,41 @@
+<!-- -*- xml -*-
+
+     To be run on HRP-2.
+
+  -->
+<launch>
+  <arg name="give_prior" default="false" />
+  <arg name="control_only" default="false" />
+  <arg name="disable_control" default="false" />
+  <arg name="postprocess_pose" default="true" />
+
+  <!-- Record the camera trajectory. -->
+  <node pkg="rosbag" type="rosbag" name="rosbag_record"
+args="record -o /tmp/slam-camera_position /slam_node/camera_position /slam_node/map_frame /slam_node/map_corrected_frame /slam_node/initial_camera_position /error /error_mapPose /error_planPose /evart/head/origin /evart/left_foot/origin"/>
+
+  <!-- Launch the tracking node -->
+  <node pkg="vslam_stereo_visibility_bridge" type="vslam"
+	name="vslam"
+	cwd="node">
+    <param name="camera_prefix" value="/wide" />
+
+    <param name="map_frame_id" value="/map" />
+    <param name="world_frame_id" value="/world"/>
+    <param name="localize_from_control_only" value="$(arg control_only)" />
+    <param name="give_slam_prior" value="$(arg give_prior)" />
+    <param name="disable_control" value="$(arg disable_control)" />
+    <param name="postprocess_pose" value="$(arg postprocess_pose)" />
+  </node>
+
+  <node name="error_estimator"
+	pkg="vslam_stereo_visibility_bridge"
+	type="error-estimation.py"
+	respawn="true"
+	unless="$(arg disable_control)">
+    <param name="base_link_map_frame_id" value="/left_ankle" />
+    <param name="base_link_plan_frame_id" value="/plan_left_ankle" />
+    <param name="map_frame_id" value="/map" />
+    <param name="plan_frame_id" value="/world" />
+    <param name="nullify_error_at_startup" value="true" />
+  </node>
+</launch>
