@@ -7,6 +7,8 @@ rosbuild_init()
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
+
 #uncomment if you have defined messages
 #rosbuild_genmsg()
 #uncomment if you have defined services
@@ -53,6 +55,12 @@ SET(SRCS
   src/rss12_stereo_visibility/ipoint.cpp
   src/rss12_stereo_visibility/utils.cpp
   src/rss12_stereo_visibility/opencvviewer.cpp
+  src/rss12_stereo_visibility/descriptor.cpp
+  src/rss12_stereo_visibility/elas.cpp
+  src/rss12_stereo_visibility/filter.cpp
+  src/rss12_stereo_visibility/matrix.cpp
+  src/rss12_stereo_visibility/triangle.cpp
+
 )
 find_package(GLUT)
 find_package(OpenGL)
