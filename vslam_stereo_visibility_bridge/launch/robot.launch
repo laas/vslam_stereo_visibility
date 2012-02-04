@@ -11,7 +11,7 @@
 
   <!-- Record the camera trajectory. -->
   <node pkg="rosbag" type="rosbag" name="rosbag_record"
-args="record -o /tmp/slam-camera_position /slam_node/camera_position /slam_node/map_frame /slam_node/map_corrected_frame /slam_node/initial_camera_position /error /error_mapPose /error_planPose /evart/head/origin /evart/left_foot/origin"/>
+args="record -o /tmp/slam-correction /slam_node/camera_position /slam_node/map_frame /slam_node/map_corrected_frame /slam_node/initial_camera_position /error /error_mapPose /error_planPose /evart/head/origin /evart/left_foot/origin /wide/left/image_raw /wide/left/camera_info /wide/right/image_raw /wide/right/camera_info /imu /joint_state /joint_command /force_0 /force_1 /force_2 /force_3 /dynamic_graph/base_footprint /dynamic_graph/base_link /dynamic_graph/com /dynamic_graph/joint_states /dynamic_graph/zmp /diagnostics /plan_left_ankle /rosout"/>
 
   <!-- Launch the tracking node -->
   <node pkg="vslam_stereo_visibility_bridge" type="vslam"
