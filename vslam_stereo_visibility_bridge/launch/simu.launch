@@ -10,6 +10,9 @@
        frame forwarded to tf by dynamic_graph_bridge
      - /joint_states: robot joint states used to compute forward
        kinematics (robot_state_publisher).
+     - /dynamic_graph/base_link: base link position published by the
+       dynamic_graph_bridge. Required to compute the transformation between
+       the SLAM and world (i.e. control) frames.
 
      The last two topics are only used when control feedback
      or pose stabilization is enabled.

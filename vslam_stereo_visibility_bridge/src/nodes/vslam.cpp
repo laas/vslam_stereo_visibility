@@ -393,6 +393,14 @@ SlamNode::localizeCamera ()
   localization_.Localization_Step
     (&leftImage_.data[0], &rightImage_.data[0], 1);
 
+  if(localization_.Get_Rejected_Pose ())
+    ROS_WARN_THROTTLE(1., "rejected pose");
+  if(localization_.Get_Tracking_Lost ())
+    {
+      ROS_WARN_THROTTLE(1., "tracking lost");
+      return;
+    }
+
   c0Mc_.getOrigin ()[0] = localization_.Get_X_Pose () / 1000.;
   c0Mc_.getOrigin ()[1] = localization_.Get_Y_Pose () / 1000.;
   c0Mc_.getOrigin ()[2] = localization_.Get_Z_Pose () / 1000.;
@@ -404,14 +412,6 @@ SlamNode::localizeCamera ()
      localization_.Get_q0_Pose ());
   c0Mc_.getBasis () = btMatrix3x3 (q);
 
-  if(localization_.Get_Rejected_Pose ())
-    ROS_WARN_THROTTLE(1., "rejected pose");
-  if(localization_.Get_Tracking_Lost ())
-    {
-      ROS_WARN_THROTTLE(1., "tracking lost");
-      return;
-    }
-
   if (firstTime_)
     {
       firstTime_ = false;
@@ -420,7 +420,6 @@ SlamNode::localizeCamera ()
 
   btTransform c0Mmap = mapMc0_.inverse ();
   btTransform cMc0 = c0Mc_.inverse ();
-
 
   cMmap_.setData (cMc0 * c0Mmap);
   cMmap_.stamp_ = leftImage_.header.stamp;
@@ -500,6 +499,8 @@ SlamNode::publishMapFrame ()
   t.child_frame_id_ = "camera_0";
   tf::transformStampedTFToMsg (t, msg);
   initialCameraPositionPub_.publish (msg);
+
+  ROS_DEBUG_THROTTLE(1., "publish map frame");
 }
 
 void

@@ -89,16 +89,23 @@ initialError = np.identity(4)
 
 ok = False
 rospy.loginfo("Waiting for frames...")
-rate = rospy.Rate(.1)
+rate = rospy.Rate(1)
 t = rospy.Time(0)
+
+while not ok and not rospy.is_shutdown():
+    if tl.frameExists(planFrameId) and tl.frameExists(mapFrameId):
+        break
+    rate.sleep()
+
+rospy.loginfo("Plan and map frames exists, waiting for frame values...")
 while not ok and not rospy.is_shutdown():
     try:
         tl.waitForTransform(
             planFrameId, baseLinkPlanFrameId,
-            t, rospy.Duration(0.1))
+            t, rospy.Duration(1.))
         tl.waitForTransform(
             mapFrameId, baseLinkMapFrameId,
-            t, rospy.Duration(0.1))
+            t, rospy.Duration(1.))
         ok = True
     except tf.Exception as e:
         rospy.logwarn("error while waiting for frames: {0}".format(e))
