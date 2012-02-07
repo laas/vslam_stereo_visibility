@@ -4,7 +4,7 @@
 
   -->
 <launch>
-  <arg name="give_prior" default="false" />
+  <arg name="give_prior" default="true" />
   <arg name="control_only" default="false" />
   <arg name="disable_control" default="false" />
   <arg name="postprocess_pose" default="true" />
@@ -36,7 +36,7 @@ args="record -o /tmp/slam-correction /slam_node/camera_position /slam_node/map_f
     <param name="base_link_plan_frame_id" value="/plan_left_ankle" />
     <param name="map_frame_id" value="/map" />
     <param name="plan_frame_id" value="/world" />
-    <param name="nullify_error_at_startup" value="true" />
+    <param name="nullify_error_at_startup" value="false" />
   </node>
 
   <node name="robot_pose_ekf"
