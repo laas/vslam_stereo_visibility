@@ -9,6 +9,7 @@
 #include <message_filters/subscriber.h>
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
+#include <nav_msgs/Odometry.h>
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/CameraInfo.h>
 #include <sensor_msgs/image_encodings.h>
@@ -95,11 +96,14 @@ private:
   ros::Publisher mapFramePub_;
   ros::Publisher mapCorrectedPub_;
   ros::Publisher initialCameraPositionPub_;
+  ros::Publisher odometryPub_;
 
   sensor_msgs::Image leftImage_;
   sensor_msgs::CameraInfo leftCamera_;
   sensor_msgs::Image rightImage_;
   sensor_msgs::CameraInfo rightCamera_;
+
+  nav_msgs::Odometry odometry_;
 
   std::string mapFrameId_;
   std::string worldFrameId_;
@@ -137,11 +141,13 @@ SlamNode::SlamNode ()
     mapFramePub_ (),
     mapCorrectedPub_ (),
     initialCameraPositionPub_ (),
+    odometryPub_ (),
 
     leftImage_ (),
     leftCamera_ (),
     rightImage_ (),
     rightCamera_ (),
+    odometry_ (),
 
     mapFrameId_ (),
     worldFrameId_ (),
@@ -230,6 +236,9 @@ SlamNode::SlamNode ()
   initialCameraPositionPub_ =
     nodeHandle_.advertise<geometry_msgs::TransformStamped>
     ("initial_camera_position", 1);
+  odometryPub_ =
+    nodeHandle_.advertise<nav_msgs::Odometry>
+    ("visual_odometry", 1);
 
   // Subscribers creation.
   leftImageSub_.subscribe (imageTransport_, leftImageTopic, 10);
@@ -246,6 +255,29 @@ SlamNode::SlamNode ()
      (&SlamNode::imageCallback, this, _1, _2, _3, _4));
 
   waitForImage ();
+
+  // Initialize odometry.
+  odometry_.header.seq = 0;
+  odometry_.header.stamp = ros::Time(0);
+  odometry_.header.frame_id = leftImage_.header.frame_id;
+  odometry_.child_frame_id = mapFrameId_;
+  odometry_.pose.pose.position.x = 0.;
+  odometry_.pose.pose.position.y = 0.;
+  odometry_.pose.pose.position.z = 0.;
+  odometry_.pose.pose.orientation.x = 0.;
+  odometry_.pose.pose.orientation.y = 0.;
+  odometry_.pose.pose.orientation.z = 0.;
+  odometry_.pose.pose.orientation.w = 0.;
+  for (unsigned i = 0; i < 36; ++i)
+    odometry_.pose.covariance[i] = 0.;
+  odometry_.twist.twist.linear.x = 0.;
+  odometry_.twist.twist.linear.y = 0.;
+  odometry_.twist.twist.linear.z = 0.;
+  odometry_.twist.twist.angular.x = 0.;
+  odometry_.twist.twist.angular.y = 0.;
+  odometry_.twist.twist.angular.z = 0.;
+  for (unsigned i = 0; i < 36; ++i)
+    odometry_.twist.covariance[i] = 0.;
 
   // Initialize tf messages.
   cMmap_.frame_id_ = leftImage_.header.frame_id;
@@ -499,6 +531,21 @@ SlamNode::publishMapFrame ()
   t.child_frame_id_ = "camera_0";
   tf::transformStampedTFToMsg (t, msg);
   initialCameraPositionPub_.publish (msg);
+
+  // Publish odometry.
+  ++odometry_.header.seq;
+  odometry_.header.stamp = cMmap_.stamp_;
+  odometry_.pose.pose.position.x = cMmap_.getOrigin ()[0];
+  odometry_.pose.pose.position.y = cMmap_.getOrigin ()[1];
+  odometry_.pose.pose.position.z = cMmap_.getOrigin ()[2];
+
+  odometry_.pose.pose.orientation.x = cMmap_.getRotation ().getX ();
+  odometry_.pose.pose.orientation.y = cMmap_.getRotation ().getY ();
+  odometry_.pose.pose.orientation.z = cMmap_.getRotation ().getZ ();
+  odometry_.pose.pose.orientation.w = cMmap_.getRotation ().getW ();
+
+  for (unsigned i = 0; i < 6; ++i)
+    odometry_.pose.covariance[i * 6 + i] = 1.;
 
   ROS_DEBUG_THROTTLE(1., "publish map frame");
 }
