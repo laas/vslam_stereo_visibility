@@ -339,6 +339,18 @@ SlamNode::retrieveCameraPositionUsingControl ()
     }
 }
 
+// Give a prior to SLAM algorithm.
+//
+// SLAM algorithm computes camera position w.r.t to initial
+// camera position. I.e. c0Mc.
+//
+// The control gives an estimation of the current camera position
+// w.r.t the world frame. I.e. wMc
+// At startup, the node stores mapMc0 / wMc0 rigid transformation.
+//
+// Therefore, we have:
+// c0Mc
+// \hat{c0Mc} = c0Mw * wMc
 void
 SlamNode::estimateCameraPosition ()
 {
@@ -353,9 +365,9 @@ SlamNode::estimateCameraPosition ()
   btTransform c0McEstimated = mapMc0_.inverse () * wMcCameraTime_;
 
   // Y is provided by the control (in optical frame).
-  pos[0] = cMmap_.getOrigin ()[0];
-  pos[1] = c0McEstimated.getOrigin ()[1];
-  pos[2] = cMmap_.getOrigin ()[2];
+  pos[0] = c0Mc_.getOrigin ()[0] * 1000.;
+  pos[1] = c0McEstimated.getOrigin ()[1] * 1000.;
+  pos[2] = c0Mc_.getOrigin ()[2] * 1000.;
 
   // pitch is given by the SLAM, the other by the control (in optical
   // frame).
@@ -367,7 +379,7 @@ SlamNode::estimateCameraPosition ()
   double pCtrl = 0.;
   double rCtrl = 0.;
 
-  cMmap_.getBasis ().getEulerYPR (y, p, r);
+  c0Mc_.getBasis ().getEulerYPR (y, p, r);
   c0McEstimated.getBasis ().getEulerYPR (yCtrl, pCtrl, rCtrl);
 
   btMatrix3x3 rEstimated;
@@ -375,10 +387,17 @@ SlamNode::estimateCameraPosition ()
   btQuaternion qEstimated;
   rEstimated.getRotation (qEstimated);
 
-  qori[0] = qEstimated.getX ();
-  qori[1] = qEstimated.getY ();
-  qori[2] = qEstimated.getZ ();
-  qori[3] = qEstimated.getW ();
+  qori[0] = qEstimated.getW ();
+  qori[1] = qEstimated.getX ();
+  qori[2] = qEstimated.getY ();
+  qori[3] = qEstimated.getZ ();
+
+  ROS_DEBUG_STREAM_THROTTLE
+    (1,
+     "prior: " << pos << "\n"
+     << "value:" << localization_.Get_Camera_TPose() << "\n"
+     << "prior angle: " << qori << "\n"
+     << "value angle:" << localization_.Get_Quaternion_qCam());
 
   localization_.Set_Camera_TPose (pos);
   localization_.Set_Camera_qCam (qori);
