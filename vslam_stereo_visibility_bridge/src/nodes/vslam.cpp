@@ -546,6 +546,7 @@ SlamNode::publishMapFrame ()
 
   for (unsigned i = 0; i < 6; ++i)
     odometry_.pose.covariance[i * 6 + i] = 1.;
+  odometryPub_.publish (odometry_);
 
   ROS_DEBUG_THROTTLE(1., "publish map frame");
 }
