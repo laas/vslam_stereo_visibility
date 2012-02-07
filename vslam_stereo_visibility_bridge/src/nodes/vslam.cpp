@@ -278,6 +278,7 @@ SlamNode::SlamNode ()
   odometry_.twist.twist.angular.z = 0.;
   for (unsigned i = 0; i < 36; ++i)
     odometry_.twist.covariance[i] = 0.;
+  odometry_.twist.covariance[0] = -1.;
 
   // Initialize tf messages.
   cMmap_.frame_id_ = leftImage_.header.frame_id;
