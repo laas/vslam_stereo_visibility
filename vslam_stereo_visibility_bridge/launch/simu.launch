@@ -36,7 +36,7 @@
 
   <!-- Record the camera trajectory. -->
   <node pkg="rosbag" type="rosbag" name="rosbag_record"
-args="record -o /tmp/slam-camera_position /slam_node/camera_position /slam_node/map_frame /slam_node/map_corrected_frame /slam_node/initial_camera_position /slam_node/visual_odometry /error /error_mapPose /error_planPose"/>
+args="record -o /tmp/slam-camera_position /slam_node/camera_position /slam_node/map_frame /slam_node/map_corrected_frame /slam_node/initial_camera_position /slam_node/visual_odometry /error /error_mapPose /error_planPose /robot_pose_ekf/odom"/>
 
   <!-- Launch the tracking node -->
   <node pkg="vslam_stereo_visibility_bridge" type="vslam"
@@ -91,5 +91,25 @@ args="record -o /tmp/slam-camera_position /slam_node/camera_position /slam_node/
     <param name="map_frame_id" value="/map" />
     <param name="plan_frame_id" value="/world" />
     <param name="nullify_error_at_startup" value="true" />
+  </node>
+
+  <node name="robot_pose_ekf"
+	pkg="robot_pose_ekf"
+	type="robot_pose_ekf"
+	respawn="true"
+	unless="$(arg disable_control)">
+    <param name="output_frame" value="odom"/>
+    <param name="freq" value="30.0"/>
+    <param name="sensor_timeout" value="1.0"/>
+
+    <param name="odom_used" value="false"/>
+    <param name="imu_used" value="true"/>
+    <param name="vo_used" value="true"/>
+
+    <param name="debug" value="true"/>
+    <param name="self_diagnose" value="true"/>
+
+    <remap from="imu_data" to="imu"/>
+    <remap from="vo" to="slam_node/visual_odometry"/>
   </node>
 </launch>
