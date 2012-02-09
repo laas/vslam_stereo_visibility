@@ -1,0 +1,53 @@
+<!-- -*- xml -*-
+
+     This plays back a recorded video sequence and estimate the
+     flexibility.
+
+  -->
+<launch>
+  <arg name="bag_file" />
+
+  <!-- Use the timestamps embedded in the ROS bag file -->
+  <param name="use_sim_time" value="true" />
+
+  <!-- Play the video sequence, publish the clock topic to preserve
+       the original timestamps. -->
+  <node pkg="rosbag" type="rosbag" name="rosbag"
+	args="play --clock -k $(arg bag_file)"/>
+
+  <node pkg="vslam_stereo_visibility_bridge" type="evaluate_flexibility.py"
+	name="evaluate_flexibility">
+    <param name="command_frame_id" value="/world" />
+  </node>
+
+  <!-- Image processing nodes. -->
+  <group ns="/wide/left">
+    <node pkg="image_proc" type="image_proc" name="image_proc_left" />
+  </group>
+  <group ns="/wide/right">
+    <node pkg="image_proc" type="image_proc" name="image_proc_right" />
+  </group>
+
+  <!-- command -->
+  <param name="robot_description"
+	 textfile="$(find hrp2_14_description)/urdf/hrp2.urdf" />
+
+  <node name="robot_state_publisher"
+	pkg="robot_state_publisher"
+	type="state_publisher"
+	respawn="true"
+	/>
+
+  <group ns="dynamic_graph">
+    <node name="tf_broadcaster"
+	  pkg="dynamic_graph_bridge"
+	  type="tf_broadcaster"
+	  respawn="true" />
+  </group>
+
+  <!-- Record the camera trajectory. -->
+  <node pkg="rosbag" type="rosbag" name="rosbag_record"
+	args="record -o /tmp/slam-flexibity-estimation /flexibility_estimation"
+	/>
+
+</launch>
