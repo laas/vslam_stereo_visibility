@@ -43,7 +43,7 @@ def listener():
     right_image_sub = message_filters.Subscriber(right_image_sub_topic, Image)
     print("Subscribe to {0}".format(right_image_sub_topic))
 
-    ts = ApproximateSynchronizer(0.005, [left_image_sub, right_image_sub], 10)
+    ts = ApproximateSynchronizer(0.001, [left_image_sub, right_image_sub], 10)
     ts.registerCallback(callback)
     rospy.spin()
 
