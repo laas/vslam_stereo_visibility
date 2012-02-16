@@ -1,3 +1,5 @@
 vslam_stereo_visibility_bridge/lib/
 vslam_stereo_visibility_bridge/bin/
 build/
+vslam_stereo_visibility_bridge/srv_gen/
+vslam_stereo_visibility_bridge/src/vslam_stereo_visibility_bridge/
