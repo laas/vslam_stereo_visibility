@@ -19,10 +19,7 @@
   -->
 <launch>
   <arg name="bag_file" />
-  <arg name="give_prior" default="true" />
-  <arg name="control_only" default="false" />
-  <arg name="disable_control" default="false" />
-  <arg name="postprocess_pose" default="true" />
+  <arg name="prior_frame_id" default="" />
 
   <arg name="launch_prefix" default="" />
 
@@ -36,7 +33,7 @@
 
   <!-- Record the camera trajectory. -->
   <node pkg="rosbag" type="rosbag" name="rosbag_record"
-args="record -o /tmp/slam-camera_position /slam_node/camera_position /slam_node/map_frame /slam_node/map_corrected_frame /slam_node/initial_camera_position /slam_node/visual_odometry /error /error_mapPose /error_planPose /robot_pose_ekf/odom"/>
+args="record -o /tmp/slam-camera_position /error /error_mapPose /error_planPose /slam_error_estimation"/>
 
   <!-- Launch the tracking node -->
   <node pkg="vslam_stereo_visibility_bridge" type="vslam"
@@ -45,13 +42,18 @@ args="record -o /tmp/slam-camera_position /slam_node/camera_position /slam_node/
 	launch-prefix="$(arg launch_prefix)">
     <param name="camera_prefix" value="/wide" />
 
-    <param name="map_frame_id" value="/map" />
-    <param name="world_frame_id" value="/world"/>
-    <param name="localize_from_control_only" value="$(arg control_only)" />
-    <param name="give_slam_prior" value="$(arg give_prior)" />
-    <param name="disable_control" value="$(arg disable_control)" />
-    <param name="postprocess_pose" value="$(arg postprocess_pose)" />
+    <param name="slam_frame_id" value="/slam" />
+    <param name="prior_frame_id" value="" /> <!-- /map_combined -->
   </node>
+
+  <node pkg="vslam_stereo_visibility_bridge" type="tf_world.py"
+	name="tf_world" />
+  <node pkg="vslam_stereo_visibility_bridge" type="tf_combined.py"
+	name="tf_combined" />
+
+  <node pkg="tf" type="static_transform_publisher"
+	args="0 0 0 3.14 0 0 /world /plan 100"
+	name="plan_to_world" />
 
   <!-- Image processing nodes. -->
   <group ns="/wide/left">
@@ -63,8 +65,7 @@ args="record -o /tmp/slam-camera_position /slam_node/camera_position /slam_node/
 
   <!-- command -->
   <param name="robot_description"
-	 textfile="$(find hrp2_14_description)/urdf/hrp2.urdf"
-	 unless="$(arg disable_control)" />
+	 textfile="$(find hrp2_14_description)/urdf/hrp2.urdf" />
 
   <node name="robot_state_publisher"
 	pkg="robot_state_publisher"
@@ -72,20 +73,16 @@ args="record -o /tmp/slam-camera_position /slam_node/camera_position /slam_node/
 	respawn="true"
 	/>
 
-  <group ns="dynamic_graph" unless="$(arg disable_control)">
-    <node name="tf_broadcaster"
-	  pkg="dynamic_graph_bridge"
-	  type="tf_broadcaster"
-	  respawn="true"
-	  unless="$(arg disable_control)"
-	  />
-  </group>
+  <node name="tf_broadcaster"
+	pkg="dynamic_graph_bridge"
+	type="tf_broadcaster"
+	respawn="true"
+	ns="dynamic_graph"/>
 
   <node name="error_estimator"
 	pkg="vslam_stereo_visibility_bridge"
 	type="error-estimation.py"
-	respawn="true"
-	unless="$(arg disable_control)">
+	respawn="true">
     <param name="base_link_map_frame_id" value="/left_ankle" />
     <param name="base_link_plan_frame_id" value="/plan_left_ankle" />
     <param name="map_frame_id" value="/map" />
@@ -93,6 +90,7 @@ args="record -o /tmp/slam-camera_position /slam_node/camera_position /slam_node/
     <param name="nullify_error_at_startup" value="false" />
   </node>
 
+<!--
   <node name="robot_pose_ekf"
 	pkg="robot_pose_ekf"
 	type="robot_pose_ekf"
@@ -112,4 +110,30 @@ args="record -o /tmp/slam-camera_position /slam_node/camera_position /slam_node/
     <remap from="imu_data" to="imu"/>
     <remap from="vo" to="slam_node/visual_odometry"/>
   </node>
+-->
+
+<!--
+  <node pkg="vslam_stereo_visibility_bridge"
+	type="evaluate_slam_error.py" name="evaluate_slam_error"
+	output="screen"/>
+-->
+
+
+
+<!--
+  <node pkg="walk_msgs" type="generator" name="generator">
+    <param name="yaml" value="/home/thomas/Downloads/walk (3).yaml" />
+    <param name="world_frame_id" value="/plan" />
+  </node>
+-->
+
+  <!--
+     FIXME: code this.
+  <node pkg="vslam_stereo_visibility_bridge" type="place_trajectory"
+	name="place_trajectory">
+    <param name="world_frame_id" value="/world" />
+    <param name="plan_frame_id" value="/plan" />
+  </node>
+  -->
+
 </launch>

@@ -1,6 +1,7 @@
 #include <stdexcept>
 
 #include <boost/bind.hpp>
+#include <boost/foreach.hpp>
 
 #include <ros/ros.h>
 #include <image_transport/image_transport.h>
@@ -15,8 +16,20 @@
 #include <sensor_msgs/image_encodings.h>
 #include <tf/transform_broadcaster.h>
 #include <tf/transform_listener.h>
+#include <pcl_ros/point_cloud.h>
+#include <pcl/point_types.h>
 
+#include <boost/utility.hpp>
+#include <boost/thread/mutex.hpp>
+#include <boost/thread/thread.hpp>
+#include <boost/thread/condition.hpp>
+
+
+#define private public
 #include <VisionLocalization.h>
+#undef private
+
+typedef pcl::PointCloud<pcl::PointXYZRGB> PointCloud;
 
 namespace debug
 {
@@ -71,11 +84,12 @@ protected:
 		      const sensor_msgs::ImageConstPtr& rightImage,
 		      const sensor_msgs::CameraInfoConstPtr& rightCamera);
 
-  void retrieveCameraPositionUsingControl ();
-  void estimateCameraPosition ();
+  void updateSlamPrior ();
   void localizeCamera ();
-  void correctCameraPosition ();
   void publishMapFrame ();
+
+  void updateFeatures ();
+  void updateFeaturesLoop ();
 
 private:
   /// \brief Main node handle.
@@ -92,39 +106,23 @@ private:
 
   message_filters::Synchronizer<policy_t> sync_;
 
-  ros::Publisher cameraTransformationPub_;
-  ros::Publisher mapFramePub_;
-  ros::Publisher mapCorrectedPub_;
-  ros::Publisher initialCameraPositionPub_;
-  ros::Publisher odometryPub_;
-
   sensor_msgs::Image leftImage_;
   sensor_msgs::CameraInfo leftCamera_;
   sensor_msgs::Image rightImage_;
   sensor_msgs::CameraInfo rightCamera_;
 
-  nav_msgs::Odometry odometry_;
+  ros::Publisher featuresPub_;
+  boost::thread featuresThread_;
 
-  std::string mapFrameId_;
-  std::string worldFrameId_;
-  tf::TransformListener tfListener_;
+  std::string slamFrameId_;
   tf::TransformBroadcaster tfBroadcaster_;
+  tf::TransformListener tfListener_;
+  tf::StampedTransform cameraMslam_;
+  PointCloud features_;
 
-  tf::StampedTransform wMcNow_;
-  tf::StampedTransform wMcCameraTime_;
-
-  btTransform mapMc0_;
-
-  btTransform c0Mc_;
-
-  tf::StampedTransform cMmap_;
-  tf::StampedTransform cMmapCorrected_;
-  bool firstTime_;
-
-  bool localizeFromControlOnly_;
-  bool givePriorToSlam_;
-  bool postProcessPose_;
-  bool disableControl_;
+  std::string priorFrameId_;
+  /// \brief Given by prior frame.
+  tf::StampedTransform slamMcameraEstimated_;
 };
 
 SlamNode::SlamNode ()
@@ -136,109 +134,32 @@ SlamNode::SlamNode ()
     rightImageSub_ (),
     rightCameraSub_ (),
     sync_ (policy_t(10)),
-
-    cameraTransformationPub_ (),
-    mapFramePub_ (),
-    mapCorrectedPub_ (),
-    initialCameraPositionPub_ (),
-    odometryPub_ (),
-
     leftImage_ (),
     leftCamera_ (),
     rightImage_ (),
     rightCamera_ (),
-    odometry_ (),
-
-    mapFrameId_ (),
-    worldFrameId_ (),
-    tfListener_ (nodeHandle_, ros::Duration (10), true),
+    featuresPub_ (),
+    featuresThread_ (),
+    slamFrameId_ (),
     tfBroadcaster_ (),
-
-    wMcNow_ (),
-    wMcCameraTime_ (),
-
-    mapMc0_ (),
-
-    c0Mc_ (),
-
-    cMmap_ (),
-    cMmapCorrected_ (),
-
-    firstTime_ (true),
-
-    localizeFromControlOnly_ (false),
-    givePriorToSlam_ (true),
-    postProcessPose_ (true),
-    disableControl_ (false)
+    tfListener_ (),
+    cameraMslam_ (),
+    features_ (),
+    priorFrameId_ (),
+    slamMcameraEstimated_ ()
 {
-  // Fill transforms with zero.
-  wMcNow_.getOrigin ().setZero ();
-  wMcNow_.getBasis ().setIdentity ();
-  wMcCameraTime_.getOrigin ().setZero ();
-  wMcCameraTime_.getBasis ().setIdentity ();
-  mapMc0_.getOrigin ().setZero ();
-  mapMc0_.getBasis ().setIdentity ();
-  c0Mc_.getOrigin ().setZero ();
-  c0Mc_.getBasis ().setIdentity ();
-  cMmap_.getOrigin ().setZero ();
-  cMmap_.getBasis ().setIdentity ();
-  cMmapCorrected_.getOrigin ().setZero ();
-  cMmapCorrected_.getBasis ().setIdentity ();
-
   // Parameters definition.
   std::string cameraTopicPrefix;
   ros::param::param<std::string>("~camera_prefix", cameraTopicPrefix, "");
+  ros::param::param<std::string>("~slam_frame_id", slamFrameId_, "/slam");
 
-  ros::param::param<std::string>("~map_frame_id", mapFrameId_, "/map");
-  ros::param::param<std::string>("~world_frame_id", worldFrameId_, "/world");
-
-  ros::param::param<bool>
-    ("~localize_from_control_only", localizeFromControlOnly_, false);
-  ros::param::param<bool>
-    ("~give_slam_prior", givePriorToSlam_, true);
-  ros::param::param<bool>
-    ("~postprocess_pose", postProcessPose_, true);
-  ros::param::param<bool>
-    ("~disable_control", disableControl_, false);
-
-  ROS_INFO_STREAM
-    ("camera prefix         : " << cameraTopicPrefix << "\n"
-     << "map frame id          : " << mapFrameId_ << "\n"
-     << "world frame id        : " << worldFrameId_ << "\n"
-     << "simulate localization: "
-     << (localizeFromControlOnly_ ? "true" : "false") << "\n"
-     << "give prior to SLAM   : "
-     << (givePriorToSlam_ ? "true" : "false") << "\n"
-     << "post-process pose    : "
-     << (postProcessPose_ ? "true" : "false") << "\n"
-     << "disable control      : "
-     << (disableControl_ ? "true" : "false"));
-
-  if (disableControl_ && localizeFromControlOnly_)
-    throw std::runtime_error ("incompatible options");
+  ros::param::param<std::string> ("~prior_frame_id", priorFrameId_, "");
 
   // Topic name construction.
   std::string leftImageTopic = cameraTopicPrefix + "/left/image_mono";
   std::string leftCameraTopic = cameraTopicPrefix + "/left/camera_info";
   std::string rightImageTopic = cameraTopicPrefix + "/right/image_mono";
   std::string rightCameraTopic = cameraTopicPrefix + "/right/camera_info";
-
-  // Publishers creation.
-  cameraTransformationPub_ =
-    nodeHandle_.advertise<geometry_msgs::TransformStamped>
-    ("camera_position", 1);
-  mapFramePub_ =
-    nodeHandle_.advertise<geometry_msgs::TransformStamped>
-    ("map_frame", 1);
-  mapCorrectedPub_ =
-    nodeHandle_.advertise<geometry_msgs::TransformStamped>
-    ("map_corrected_frame", 1);
-  initialCameraPositionPub_ =
-    nodeHandle_.advertise<geometry_msgs::TransformStamped>
-    ("initial_camera_position", 1);
-  odometryPub_ =
-    nodeHandle_.advertise<nav_msgs::Odometry>
-    ("visual_odometry", 1);
 
   // Subscribers creation.
   leftImageSub_.subscribe (imageTransport_, leftImageTopic, 10);
@@ -256,36 +177,14 @@ SlamNode::SlamNode ()
 
   waitForImage ();
 
-  // Initialize odometry.
-  odometry_.header.seq = 0;
-  odometry_.header.stamp = ros::Time(0);
-  odometry_.header.frame_id = leftImage_.header.frame_id;
-  odometry_.child_frame_id = mapFrameId_;
-  odometry_.pose.pose.position.x = 0.;
-  odometry_.pose.pose.position.y = 0.;
-  odometry_.pose.pose.position.z = 0.;
-  odometry_.pose.pose.orientation.x = 0.;
-  odometry_.pose.pose.orientation.y = 0.;
-  odometry_.pose.pose.orientation.z = 0.;
-  odometry_.pose.pose.orientation.w = 0.;
-  for (unsigned i = 0; i < 36; ++i)
-    odometry_.pose.covariance[i] = 0.;
-  odometry_.twist.twist.linear.x = 0.;
-  odometry_.twist.twist.linear.y = 0.;
-  odometry_.twist.twist.linear.z = 0.;
-  odometry_.twist.twist.angular.x = 0.;
-  odometry_.twist.twist.angular.y = 0.;
-  odometry_.twist.twist.angular.z = 0.;
-  for (unsigned i = 0; i < 36; ++i)
-    odometry_.twist.covariance[i] = 0.;
-  odometry_.twist.covariance[0] = -1.;
+  // Initialize features.
+  featuresPub_ = nodeHandle_.advertise<PointCloud> ("features", 1);
+  featuresThread_ = boost::thread (&SlamNode::updateFeaturesLoop, this);
 
-  // Initialize tf messages.
-  cMmap_.frame_id_ = leftImage_.header.frame_id;
-  cMmap_.child_frame_id_ = mapFrameId_;
-
-  cMmapCorrected_.frame_id_ = leftImage_.header.frame_id;
-  cMmapCorrected_.child_frame_id_ = mapFrameId_;
+  // Initialize transformation.
+  cameraMslam_.child_frame_id_ = slamFrameId_;
+  cameraMslam_.frame_id_ = leftImage_.header.frame_id;
+  cameraMslam_.getOrigin ().setZero ();
 
   if (!ros::ok())
     return;
@@ -294,7 +193,9 @@ SlamNode::SlamNode ()
 }
 
 SlamNode::~SlamNode ()
-{}
+{
+  featuresThread_.join ();
+}
 
 void
 SlamNode::waitForImage ()
@@ -310,265 +211,90 @@ SlamNode::waitForImage ()
 }
 
 void
-SlamNode::retrieveCameraPositionUsingControl ()
+SlamNode::updateSlamPrior ()
 {
-  if (disableControl_)
+  if (priorFrameId_.empty ())
     return;
+
   try
     {
-      // camera position w.r.t. world frame
+      // camera position w.r.t. SLAM frame (estimated)
       tfListener_.lookupTransform
-	(worldFrameId_, leftImage_.header.frame_id,
-	 ros::Time (), wMcNow_);
-      tfListener_.lookupTransform
-	(worldFrameId_, leftImage_.header.frame_id,
-	 leftImage_.header.stamp, wMcCameraTime_);
+  	(priorFrameId_, leftImage_.header.frame_id,
+  	 leftImage_.header.stamp, slamMcameraEstimated_);
+      assert (slamMcameraEstimated_.stamp_ == leftImage_.header.stamp);
 
-      assert (wMcCameraTime_.stamp_ == leftImage_.header.stamp);
+      TooN::Vector<3> pos;
+      TooN::Vector<4> qori;
 
-      ROS_DEBUG_THROTTLE
-	(1.,
-	 "camera position w.r.t. world frame sucessfully retrieved");
+      pos[0] = slamMcameraEstimated_.getOrigin ()[0] * 1000.;
+      pos[1] = slamMcameraEstimated_.getOrigin ()[1] * 1000.;
+      pos[2] = slamMcameraEstimated_.getOrigin ()[2] * 1000.;
+
+      btQuaternion qEstimated = slamMcameraEstimated_.getRotation ();
+      qori[0] = qEstimated.getW (); // q0
+      qori[1] = qEstimated.getX (); // X
+      qori[2] = qEstimated.getY (); // Y
+      qori[3] = qEstimated.getZ (); // Z
+
+      ROS_DEBUG_STREAM_THROTTLE
+	(1,
+	 "prior: " << pos << "\n"
+	 << "value:" << localization_.Get_Camera_TPose() << "\n"
+	 << "prior angle: " << qori << "\n"
+	 << "value angle:" << localization_.Get_Quaternion_qCam());
+
+      localization_.Set_Camera_TPose (pos);
+      localization_.Set_Camera_qCam (qori);
     }
   catch (const tf::TransformException& e)
     {
       ROS_DEBUG_STREAM_THROTTLE
 	(1.,
-	 "failed to retrieve camera position w.r.t. world frame\n"
+	 "failed to retrieve prior frame\n"
 	 << e.what ());
     }
 }
 
-// Give a prior to SLAM algorithm.
-//
-// SLAM algorithm computes camera position w.r.t to initial
-// camera position. I.e. c0Mc.
-//
-// The control gives an estimation of the current camera position
-// w.r.t the world frame. I.e. wMc
-// At startup, the node stores mapMc0 / wMc0 rigid transformation.
-//
-// Therefore, we have:
-// c0Mc
-// \hat{c0Mc} = c0Mw * wMc
-void
-SlamNode::estimateCameraPosition ()
-{
-  if (!givePriorToSlam_ || disableControl_ || localizeFromControlOnly_)
-    return;
-  if (firstTime_)
-    return;
-
-  TooN::Vector<3> pos;
-  TooN::Vector<4> qori;
-
-  btTransform c0McEstimated = mapMc0_.inverse () * wMcCameraTime_;
-
-  // Y is provided by the control (in optical frame).
-  pos[0] = c0Mc_.getOrigin ()[0] * 1000.;
-  pos[1] = c0McEstimated.getOrigin ()[1] * 1000.;
-  pos[2] = c0Mc_.getOrigin ()[2] * 1000.;
-
-  // pitch is given by the SLAM, the other by the control (in optical
-  // frame).
-  double y = 0.;
-  double p = 0.;
-  double r = 0.;
-
-  double yCtrl = 0.;
-  double pCtrl = 0.;
-  double rCtrl = 0.;
-
-  c0Mc_.getBasis ().getEulerYPR (y, p, r);
-  c0McEstimated.getBasis ().getEulerYPR (yCtrl, pCtrl, rCtrl);
-
-  btMatrix3x3 rEstimated;
-  rEstimated.setEulerYPR (yCtrl, p, rCtrl);
-  btQuaternion qEstimated;
-  rEstimated.getRotation (qEstimated);
-
-  qori[0] = qEstimated.getW ();
-  qori[1] = qEstimated.getX ();
-  qori[2] = qEstimated.getY ();
-  qori[3] = qEstimated.getZ ();
-
-  ROS_DEBUG_STREAM_THROTTLE
-    (1,
-     "prior: " << pos << "\n"
-     << "value:" << localization_.Get_Camera_TPose() << "\n"
-     << "prior angle: " << qori << "\n"
-     << "value angle:" << localization_.Get_Quaternion_qCam());
-
-  localization_.Set_Camera_TPose (pos);
-  localization_.Set_Camera_qCam (qori);
-}
 
 void
 SlamNode::localizeCamera ()
 {
-  if (localizeFromControlOnly_)
-    {
-      // Check that data have been received.
-      if (wMcCameraTime_.stamp_.nsec == 0)
-	return;
-      cMmap_.setData (wMcCameraTime_.inverse ());
-      cMmap_.stamp_ = wMcCameraTime_.stamp_;
-      firstTime_ = false;
-      return;
-    }
-
-  if (firstTime_)
-    {
-      if (disableControl_)
-	{
-	  mapMc0_.getOrigin ()[0] = 0.;
-	  mapMc0_.getOrigin ()[1] = 0.;
-	  mapMc0_.getOrigin ()[2] = 0.;
-	  mapMc0_.getBasis ().setIdentity ();
-	}
-      else
-	{
-	  // We need control data at the first time to initialize the
-	  // SLAM correctly.
-	  if (wMcCameraTime_.stamp_ != leftImage_.header.stamp)
-	    return;
-	  mapMc0_ = wMcCameraTime_;
-	}
-      ROS_INFO_STREAM ("initial camera position initialization\n"
-		       << debug::getPoseString(mapMc0_));
-    }
-
   // We already localized the robot on the current image, nothing to do.
-  if (cMmap_.stamp_ == leftImage_.header.stamp)
+  if (cameraMslam_.stamp_ == leftImage_.header.stamp)
     return;
 
   localization_.Localization_Step
     (&leftImage_.data[0], &rightImage_.data[0], 1);
 
-  if(localization_.Get_Rejected_Pose ())
+  if (localization_.Get_Rejected_Pose ())
     ROS_WARN_THROTTLE(1., "rejected pose");
-  if(localization_.Get_Tracking_Lost ())
+  if (localization_.Get_Tracking_Lost ())
     {
       ROS_WARN_THROTTLE(1., "tracking lost");
       return;
     }
 
-  c0Mc_.getOrigin ()[0] = localization_.Get_X_Pose () / 1000.;
-  c0Mc_.getOrigin ()[1] = localization_.Get_Y_Pose () / 1000.;
-  c0Mc_.getOrigin ()[2] = localization_.Get_Z_Pose () / 1000.;
+  // Inject computed pose into ROS framework.
+  cameraMslam_.getOrigin ()[0] = localization_.Get_X_Pose () / 1000.;
+  cameraMslam_.getOrigin ()[1] = localization_.Get_Y_Pose () / 1000.;
+  cameraMslam_.getOrigin ()[2] = localization_.Get_Z_Pose () / 1000.;
 
   btQuaternion q
-    (localization_.Get_qX_Pose (),
-     localization_.Get_qY_Pose (),
-     localization_.Get_qZ_Pose (),
-     localization_.Get_q0_Pose ());
-  c0Mc_.getBasis () = btMatrix3x3 (q);
+    (localization_.Get_qX_Pose (), // X
+     localization_.Get_qY_Pose (), // Y
+     localization_.Get_qZ_Pose (), // Z
+     localization_.Get_q0_Pose ()); // W
+  cameraMslam_.getBasis () = btMatrix3x3 (q);
 
-  if (firstTime_)
-    {
-      firstTime_ = false;
-      ROS_INFO ("first localization went well");
-    }
-
-  btTransform c0Mmap = mapMc0_.inverse ();
-  btTransform cMc0 = c0Mc_.inverse ();
-
-  cMmap_.setData (cMc0 * c0Mmap);
-  cMmap_.stamp_ = leftImage_.header.stamp;
-}
-
-void
-SlamNode::correctCameraPosition ()
-{
-  cMmapCorrected_ = cMmap_;
-  cMmapCorrected_.stamp_ = cMmap_.stamp_;
-  cMmapCorrected_.frame_id_ = cMmap_.frame_id_;
-  cMmapCorrected_.child_frame_id_ = "/map_corrected";
-
-  if (!postProcessPose_ || disableControl_)
-    return;
-
-  // Make sure we received control data.
-  if (wMcCameraTime_.stamp_.nsec == 0)
-    return;
-
-  btTransform cMw = wMcCameraTime_.inverse ();
-
-  cMmapCorrected_.getOrigin ()[1] = cMw.getOrigin ()[1];
-
-  double y = 0.;
-  double p = 0.;
-  double r = 0.;
-
-  double yCtrl = 0.;
-  double pCtrl = 0.;
-  double rCtrl = 0.;
-
-  cMmapCorrected_.getBasis ().getEulerYPR (y, p, r);
-  cMw.getBasis ().getEulerYPR (yCtrl, pCtrl, rCtrl);
-
-  cMmapCorrected_.getBasis ().setEulerYPR (yCtrl, p, rCtrl);
+  cameraMslam_.stamp_ = leftImage_.header.stamp;
+  cameraMslam_.setData(cameraMslam_.inverse ());
 }
 
 void
 SlamNode::publishMapFrame ()
 {
-  if (firstTime_)
-    return;
-
-  //FIXME this is cMmap at camera time, move it to now...
-  tfBroadcaster_.sendTransform (cMmap_);
-  tfBroadcaster_.sendTransform (cMmapCorrected_);
-
-  // Publish data as topics.
-  geometry_msgs::TransformStamped msg;
-  tf::StampedTransform t;
-
-  t.setData (c0Mc_);
-  t.stamp_ = cMmap_.stamp_;
-  t.frame_id_ = "camera_0";
-  t.child_frame_id_ = leftImage_.header.frame_id;
-  tf::transformStampedTFToMsg (t, msg);
-  cameraTransformationPub_.publish (msg);
-
-  t.setData (cMmap_.inverse ());
-  t.stamp_ = cMmap_.stamp_;
-  t.frame_id_ = mapFrameId_;
-  t.child_frame_id_ = leftImage_.header.frame_id;
-  tf::transformStampedTFToMsg (t, msg);
-  mapFramePub_.publish (msg);
-
-  t.setData (cMmapCorrected_.inverse ());
-  t.stamp_ = cMmapCorrected_.stamp_;
-  t.frame_id_ = "/map_corrected";
-  t.child_frame_id_ = leftImage_.header.frame_id;
-  tf::transformStampedTFToMsg (t, msg);
-  mapCorrectedPub_.publish (msg);
-
-  t.setData (mapMc0_);
-  t.stamp_ = cMmap_.stamp_;
-  t.frame_id_ = mapFrameId_;
-  t.child_frame_id_ = "camera_0";
-  tf::transformStampedTFToMsg (t, msg);
-  initialCameraPositionPub_.publish (msg);
-
-  // Publish odometry.
-  ++odometry_.header.seq;
-  odometry_.header.stamp = cMmap_.stamp_;
-  odometry_.pose.pose.position.x = cMmap_.getOrigin ()[0];
-  odometry_.pose.pose.position.y = cMmap_.getOrigin ()[1];
-  odometry_.pose.pose.position.z = cMmap_.getOrigin ()[2];
-
-  odometry_.pose.pose.orientation.x = cMmap_.getRotation ().getX ();
-  odometry_.pose.pose.orientation.y = cMmap_.getRotation ().getY ();
-  odometry_.pose.pose.orientation.z = cMmap_.getRotation ().getZ ();
-  odometry_.pose.pose.orientation.w = cMmap_.getRotation ().getW ();
-
-  for (unsigned i = 0; i < 6; ++i)
-    odometry_.pose.covariance[i * 6 + i] = 1e4;
-  odometryPub_.publish (odometry_);
-
-  ROS_DEBUG_THROTTLE(1., "publish map frame");
+  tfBroadcaster_.sendTransform (cameraMslam_);
 }
 
 void
@@ -578,10 +304,8 @@ SlamNode::spin ()
 
   while (ros::ok ())
     {
-      retrieveCameraPositionUsingControl ();
-      estimateCameraPosition ();
+      updateSlamPrior ();
       localizeCamera ();
-      correctCameraPosition ();
       publishMapFrame ();
 
       ros::spinOnce ();
@@ -625,6 +349,71 @@ SlamNode::imageInitialized ()
     && rightImage_.width > 0 && rightImage_.height > 0;
 }
 
+void
+SlamNode::updateFeatures ()
+{
+  std::vector<Feature *>* featuresPtr =
+    localization_.Scene.Get_List_of_Features ();
+  assert (featuresPtr);
+  const std::vector<Feature *>& features = *featuresPtr;
+
+  features_.header.frame_id = slamFrameId_;
+  features_.header.stamp = ros::Time::now ();
+  features_.height = 1;
+  features_.width = features.size ();
+  features_.points.reserve (features.size ());
+  features_.points.clear ();
+
+  BOOST_FOREACH(Feature* feature, features)
+    {
+      uint8_t r = 0;
+      uint8_t g = 0;
+      uint8_t b = 0;
+      switch (feature->state)
+	{
+	case 0:
+	  r = g = b = 255;
+	  break;
+	case 1:
+	  r = 255;
+	  g = b = 0;
+	  break;
+	case 2:
+	  g = 255;
+	  r = b = 0;
+	  break;
+	case 3:
+	  r = 255;
+	  g = 165;
+	  b = 0;
+	  break;
+	default:
+	  assert (0);
+	}
+
+      pcl::PointXYZRGB point;
+      uint32_t rgb = ((uint32_t)r << 16 | (uint32_t)g << 8 | (uint32_t)b);
+      point.x = feature->Get_Xw () / 1000.;
+      point.y = feature->Get_Yw () / 1000.;
+      point.z = feature->Get_Zw () / 1000.;
+      point.rgb = *reinterpret_cast<float*>(&rgb);
+      features_.points.push_back (point);
+    }
+}
+
+// Do *not* spin here.
+void
+SlamNode::updateFeaturesLoop ()
+{
+  ros::Rate rate (1);
+
+  while (ros::ok ())
+    {
+      updateFeatures ();
+      featuresPub_.publish (features_);
+      rate.sleep ();
+    }
+}
 
 int main (int argc, char **argv)
 {

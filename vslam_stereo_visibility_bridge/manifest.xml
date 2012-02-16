@@ -21,6 +21,7 @@
   <depend package="geometry_msgs"/>
   <depend package="nav_msgs"/>
   <depend package="image_transport"/>
+  <depend package="pcl_ros"/>
 
   <depend package="tf"/>
 
