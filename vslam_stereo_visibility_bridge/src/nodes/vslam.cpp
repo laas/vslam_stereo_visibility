@@ -4,6 +4,7 @@
 #include <boost/foreach.hpp>
 
 #include <ros/ros.h>
+#include <diagnostic_updater/diagnostic_updater.h>
 #include <image_transport/image_transport.h>
 #include <image_transport/subscriber_filter.h>
 #include <geometry_msgs/TransformStamped.h>
@@ -91,6 +92,8 @@ protected:
   void updateFeatures ();
   void updateFeaturesLoop ();
 
+  void updateDiagnostics (diagnostic_updater::DiagnosticStatusWrapper& stat);
+
 private:
   /// \brief Main node handle.
   ros::NodeHandle nodeHandle_;
@@ -123,6 +126,8 @@ private:
   std::string priorFrameId_;
   /// \brief Given by prior frame.
   tf::StampedTransform slamMcameraEstimated_;
+
+  diagnostic_updater::Updater updater_;
 };
 
 SlamNode::SlamNode ()
@@ -146,7 +151,8 @@ SlamNode::SlamNode ()
     cameraMslam_ (),
     features_ (),
     priorFrameId_ (),
-    slamMcameraEstimated_ ()
+    slamMcameraEstimated_ (),
+    updater_ ()
 {
   // Parameters definition.
   std::string cameraTopicPrefix;
@@ -190,6 +196,10 @@ SlamNode::SlamNode ()
     return;
   if (!imageInitialized ())
     throw std::runtime_error ("failed to retrieve image");
+
+  // Updater.
+  updater_.setHardwareID ("none");
+  updater_.add ("slam", this, &SlamNode::updateDiagnostics);
 }
 
 SlamNode::~SlamNode ()
@@ -307,6 +317,7 @@ SlamNode::spin ()
       updateSlamPrior ();
       localizeCamera ();
       publishMapFrame ();
+      updater_.update ();
 
       ros::spinOnce ();
       rate.sleep ();
@@ -413,6 +424,44 @@ SlamNode::updateFeaturesLoop ()
       featuresPub_.publish (features_);
       rate.sleep ();
     }
+}
+
+void
+SlamNode::updateDiagnostics (diagnostic_updater::DiagnosticStatusWrapper& stat)
+{
+  stat.summary (diagnostic_msgs::DiagnosticStatus::OK, "OK");
+
+  if (localization_.Get_Rejected_Pose ())
+    stat.summary (diagnostic_msgs::DiagnosticStatus::WARN, "Rejected pose");
+  if (localization_.Get_Tracking_Lost ())
+    stat.summary (diagnostic_msgs::DiagnosticStatus::ERROR, "Tracking lost");
+
+  stat.add("Current number of stereo correspondances",
+	   localization_.Get_Number_Current_Stereo_Correspondences ());
+  stat.add("Previous number of stereo correspondances",
+	   localization_.Get_Number_Previous_Stereo_Correspondences ());
+
+  stat.add("Putatives PnP",
+	   localization_.Get_Number_Putatives_PnP ());
+  stat.add("Putatives VO",
+	   localization_.Get_Number_Putatives_VO ());
+
+  stat.add("Inliers PnP",
+	   localization_.Get_Number_Inliers_PnP ());
+  stat.add("Inliers VO",
+	   localization_.Get_Number_Inliers_VO ());
+
+  stat.add("Ratio Inliers PnP",
+	   localization_.Get_Ratio_Inliers_PnP ());
+  stat.add("Ratio Inliers VO",
+	   localization_.Get_Ratio_Inliers_VO ());
+
+  stat.add("Rejected pose",
+	   localization_.Get_Rejected_Pose ());
+  stat.add("Rejected VO",
+	   localization_.Get_Rejected_VO ());
+  stat.add("Tracking lost",
+	   localization_.Get_Tracking_Lost ());
 }
 
 int main (int argc, char **argv)
