@@ -220,7 +220,7 @@ SlamNode::updateSlamPrior ()
     {
       // camera position w.r.t. SLAM frame (estimated)
       tfListener_.lookupTransform
-  	(priorFrameId_, leftImage_.header.frame_id,
+	(priorFrameId_, slamFrameId_, //leftImage_.header.frame_id,
   	 leftImage_.header.stamp, slamMcameraEstimated_);
       assert (slamMcameraEstimated_.stamp_ == leftImage_.header.stamp);
 

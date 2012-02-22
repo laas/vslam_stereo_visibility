@@ -43,13 +43,14 @@ args="record -o /tmp/slam-camera_position /error /error_mapPose /error_planPose 
     <param name="camera_prefix" value="/wide" />
 
     <param name="slam_frame_id" value="/slam" />
-    <param name="prior_frame_id" value="" /> <!-- /map_combined -->
+    <!-- /camera_corrected -->
+    <param name="prior_frame_id" value="" />
   </node>
 
   <node pkg="vslam_stereo_visibility_bridge" type="tf_world.py"
 	name="tf_world" />
   <node pkg="vslam_stereo_visibility_bridge" type="tf_combined.py"
-	name="tf_combined" />
+	name="tf_combined" output="screen" />
 
   <node pkg="tf" type="static_transform_publisher"
 	args="0 0 0 3.14 0 0 /world /plan 100"
