@@ -2,6 +2,7 @@
 
 #include <boost/bind.hpp>
 #include <boost/foreach.hpp>
+#include <boost/format.hpp>
 
 #include <ros/ros.h>
 #include <diagnostic_updater/diagnostic_updater.h>
@@ -120,6 +121,7 @@ private:
   std::string slamFrameId_;
   tf::TransformBroadcaster tfBroadcaster_;
   tf::TransformListener tfListener_;
+  btTransform slamMcamera_;
   tf::StampedTransform cameraMslam_;
   PointCloud features_;
 
@@ -148,6 +150,7 @@ SlamNode::SlamNode ()
     slamFrameId_ (),
     tfBroadcaster_ (),
     tfListener_ (),
+    slamMcamera_ (),
     cameraMslam_ (),
     features_ (),
     priorFrameId_ (),
@@ -286,19 +289,19 @@ SlamNode::localizeCamera ()
     }
 
   // Inject computed pose into ROS framework.
-  cameraMslam_.getOrigin ()[0] = localization_.Get_X_Pose () / 1000.;
-  cameraMslam_.getOrigin ()[1] = localization_.Get_Y_Pose () / 1000.;
-  cameraMslam_.getOrigin ()[2] = localization_.Get_Z_Pose () / 1000.;
+  slamMcamera_.getOrigin ()[0] = localization_.Get_X_Pose () / 1000.;
+  slamMcamera_.getOrigin ()[1] = localization_.Get_Y_Pose () / 1000.;
+  slamMcamera_.getOrigin ()[2] = localization_.Get_Z_Pose () / 1000.;
 
-  btQuaternion q
-    (localization_.Get_qX_Pose (), // X
-     localization_.Get_qY_Pose (), // Y
-     localization_.Get_qZ_Pose (), // Z
-     localization_.Get_q0_Pose ()); // W
-  cameraMslam_.getBasis () = btMatrix3x3 (q);
+  // The rotation part is world w.r.t camera, so we transpose it.
+  TooN::Matrix<3,3> R = localization_.Get_Rotation_CW ().T ();
+  for (unsigned i = 0; i < 3; ++i)
+    for (unsigned j = 0; j < 3; ++j)
+      slamMcamera_.getBasis ()[i][j] = R[i][j];
 
+  // We provide to tf the inversed pose.
   cameraMslam_.stamp_ = leftImage_.header.stamp;
-  cameraMslam_.setData(cameraMslam_.inverse ());
+  cameraMslam_.setData(slamMcamera_.inverse ());
 }
 
 void
@@ -462,6 +465,33 @@ SlamNode::updateDiagnostics (diagnostic_updater::DiagnosticStatusWrapper& stat)
 	   localization_.Get_Rejected_VO ());
   stat.add("Tracking lost",
 	   localization_.Get_Tracking_Lost ());
+
+  stat.add("Pose (X)", localization_.Get_X_Pose ());
+  stat.add("Pose (Y)", localization_.Get_Y_Pose ());
+  stat.add("Pose (Z)", localization_.Get_Z_Pose ());
+
+  stat.add("Pose (q0)", localization_.Get_q0_Pose ());
+  stat.add("Pose (qX)", localization_.Get_qX_Pose ());
+  stat.add("Pose (qY)", localization_.Get_qY_Pose ());
+  stat.add("Pose (qZ)", localization_.Get_qZ_Pose ());
+
+  stat.add("cameraMslam (X)", cameraMslam_.getOrigin ()[0]);
+  stat.add("cameraMslam (Y)", cameraMslam_.getOrigin ()[1]);
+  stat.add("cameraMslam (Z)", cameraMslam_.getOrigin ()[2]);
+
+  stat.add("cameraMslam (qX)", cameraMslam_.getRotation ().getX ());
+  stat.add("cameraMslam (qY)", cameraMslam_.getRotation ().getY ());
+  stat.add("cameraMslam (qZ)", cameraMslam_.getRotation ().getZ ());
+  stat.add("cameraMslam (qW)", cameraMslam_.getRotation ().getW ());
+
+  stat.add("slamMcamera (X)", slamMcamera_.getOrigin ()[0]);
+  stat.add("slamMcamera (Y)", slamMcamera_.getOrigin ()[1]);
+  stat.add("slamMcamera (Z)", slamMcamera_.getOrigin ()[2]);
+
+  stat.add("slamMcamera (qX)", slamMcamera_.getRotation ().getX ());
+  stat.add("slamMcamera (qY)", slamMcamera_.getRotation ().getY ());
+  stat.add("slamMcamera (qZ)", slamMcamera_.getRotation ().getZ ());
+  stat.add("slamMcamera (qW)", slamMcamera_.getRotation ().getW ());
 }
 
 int main (int argc, char **argv)
