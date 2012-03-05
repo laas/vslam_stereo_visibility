@@ -1,0 +1,22 @@
+<!-- -*- xml -*-
+  -->
+<launch>
+  <node pkg="tf" type="static_transform_publisher" name="world_to_marker"
+	args="1.72 -0.64 1.5 0 3.14 -1.57 /plan_marker /world 100" />
+
+  <node pkg="tf" type="static_transform_publisher" name="world_to_marker2"
+	args="1.72 -0.64 1.5 0 3.14 -1.57 /ar_marker /world_marker 100" />
+
+
+  <node name="error_estimator"
+	pkg="vslam_stereo_visibility_bridge"
+	type="error-estimation.py"
+	respawn="true"
+	ns="ar">
+    <param name="base_link_map_frame_id" value="/l_ankle" />
+    <param name="base_link_plan_frame_id" value="/plan_left_ankle" />
+    <param name="map_frame_id" value="/world_marker" />
+    <param name="plan_frame_id" value="/world" />
+    <param name="nullify_error_at_startup" value="false" />
+  </node>
+</launch>
