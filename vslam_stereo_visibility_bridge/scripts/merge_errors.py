@@ -35,7 +35,12 @@ while not rospy.is_shutdown():
             pub.publish(errors["slam"])
         elif not "slam" in errors:
             pub.publish(errors["ar"])
-        elif np.linalg.norm(errors["ar"].vector) < np.linalg.norm(errors["slam"].vector):
+        elif np.linalg.norm(np.matrix([errors["ar"].vector.x,
+                                       errors["ar"].vector.y,
+                                       errors["ar"].vector.z])) \
+                < np.linalg.norm(np.matrix([errors["slam"].vector.x,
+                                            errors["slam"].vector.y,
+                                            errors["slam"].vector.z])):
             pub.publish(errors["ar"])
         else:
             pub.publish(errors["slam"])
